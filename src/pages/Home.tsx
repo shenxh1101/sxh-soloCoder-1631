@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
-import { Plus, Printer, Phone, Calendar, Tag, FileText, Sparkles } from 'lucide-react';
-import { ClothingType, Clothing, DEFAULT_PRICES, CLOTHING_TYPE_LABELS, CreateClothingRequest } from '../../shared/types';
-import { clothingApi } from '../utils/api';
+import { Plus, Printer, Phone, Calendar, Tag, FileText, Sparkles, User, Info } from 'lucide-react';
+import { ClothingType, Clothing, DEFAULT_PRICES, CLOTHING_TYPE_LABELS, CreateClothingRequest, Customer } from '../../shared/types';
+import { clothingApi, customerApi } from '../utils/api';
 import { useStore } from '../store/useStore';
 import StatusBadge from '../components/StatusBadge';
 import Receipt from '../components/Receipt';
@@ -19,6 +19,8 @@ export default function Home() {
   const [createdClothing, setCreatedClothing] = useState<Clothing | null>(null);
   const [loading, setLoading] = useState(false);
   const [showPreview, setShowPreview] = useState(false);
+  const [customerInfo, setCustomerInfo] = useState<Customer | null>(null);
+  const [showCustomerTip, setShowCustomerTip] = useState(false);
 
   useEffect(() => {
     const defaultDate = new Date();
@@ -39,18 +41,22 @@ export default function Home() {
 
   const handlePhoneChange = async (phone: string) => {
     setFormData(prev => ({ ...prev, customerPhone: phone }));
+    setCustomerInfo(null);
+    setShowCustomerTip(false);
+    
     if (phone.length === 11) {
       try {
-        const result = await clothingApi.getCustomerHistory(phone);
-        if (result.history.length > 0) {
-          const lastRecord = result.history[0];
+        const customer = await customerApi.getSimple(phone);
+        if (customer) {
+          setCustomerInfo(customer);
+          setShowCustomerTip(true);
           setFormData(prev => ({
             ...prev,
-            customerName: lastRecord.customerName || prev.customerName,
+            customerName: customer.name || prev.customerName,
           }));
         }
       } catch (e) {
-        console.log('No history found');
+        console.log('新客户');
       }
     }
   };
@@ -67,6 +73,12 @@ export default function Home() {
       setCreatedClothing(clothing);
       addClothingToList(clothing);
       setShowPreview(true);
+      
+      setTimeout(() => {
+        if (confirm('是否现在打印取衣单？')) {
+          window.print();
+        }
+      }, 300);
     } catch (error) {
       alert('登记失败，请重试');
     } finally {
@@ -81,6 +93,8 @@ export default function Home() {
   const handleNew = () => {
     setCreatedClothing(null);
     setShowPreview(false);
+    setCustomerInfo(null);
+    setShowCustomerTip(false);
     setFormData({
       clothingType: 'suit',
       customerPhone: '',
@@ -144,7 +158,7 @@ export default function Home() {
             </div>
 
             <div className="grid grid-cols-2 gap-4">
-              <div>
+              <div className="relative">
                 <label className="label">
                   <Phone className="w-3 h-3 inline mr-1" />
                   客户电话
@@ -157,6 +171,24 @@ export default function Home() {
                   className="input input-focus-breathe"
                   maxLength={11}
                 />
+                {showCustomerTip && customerInfo && (
+                  <div className="mt-2 p-3 bg-primary-50 rounded-lg border border-primary-200">
+                    <div className="flex items-center gap-2 text-sm text-primary-600 font-medium mb-1">
+                      <User className="w-4 h-4" />
+                      老客户 · 第 {customerInfo.totalCount + 1} 次送洗
+                    </div>
+                    <div className="text-xs text-gray-500">
+                      累计消费 ¥{customerInfo.totalAmount.toFixed(0)}
+                      {customerInfo.favoriteType && ` · 常洗 ${CLOTHING_TYPE_LABELS[customerInfo.favoriteType]}`}
+                    </div>
+                    {customerInfo.remark && (
+                      <div className="mt-2 text-xs text-accent-600 bg-accent-50 px-2 py-1 rounded">
+                        <Info className="w-3 h-3 inline mr-1" />
+                        {customerInfo.remark}
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
               <div>
                 <label className="label">

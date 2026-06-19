@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, Legend } from 'recharts';
-import { TrendingUp, Shirt, DollarSign, AlertTriangle, Calendar } from 'lucide-react';
-import { MonthlyStats, ClothingType, CLOTHING_TYPE_LABELS } from '../../shared/types';
+import { TrendingUp, Shirt, DollarSign, AlertTriangle, Calendar, Wallet } from 'lucide-react';
+import { MonthlyStats, ClothingType, CLOTHING_TYPE_LABELS, PAYMENT_METHOD_LABELS, PAYMENT_METHOD_COLORS } from '../../shared/types';
 import { statisticsApi } from '../utils/api';
 
 const CHART_COLORS = ['#165DFF', '#722ED1', '#0FC6C2', '#00B42A', '#FF7D00'];
@@ -40,6 +40,14 @@ export default function StatisticsPage() {
     name: item.typeName,
     value: item.count,
   })) || [];
+
+  const paymentPieData = stats?.paymentStats.map(item => ({
+    name: item.methodName,
+    value: item.amount,
+    count: item.count,
+  })) || [];
+
+  const totalPaymentAmount = stats?.paymentStats.reduce((sum, item) => sum + item.amount, 0) || 0;
 
   return (
     <div className="animate-fade-in">
@@ -131,7 +139,7 @@ export default function StatisticsPage() {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
         <div className="card p-6 lg:col-span-2 animate-fade-in animate-stagger-5">
           <h3 className="text-lg font-semibold text-gray-600 mb-4 flex items-center gap-2">
             <BarChart className="w-5 h-5 text-primary-500" />
@@ -216,8 +224,129 @@ export default function StatisticsPage() {
         </div>
       </div>
 
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
+        <div className="card p-6 lg:col-span-1 animate-fade-in animate-stagger-5">
+          <h3 className="text-lg font-semibold text-gray-600 mb-4 flex items-center gap-2">
+            <Wallet className="w-5 h-5 text-success" />
+            支付方式统计
+          </h3>
+          <div className="h-64">
+            {paymentPieData.length > 0 ? (
+              <ResponsiveContainer width="100%" height="100%">
+                <PieChart>
+                  <Pie
+                    data={paymentPieData}
+                    cx="50%"
+                    cy="50%"
+                    labelLine={false}
+                    label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
+                    outerRadius={70}
+                    innerRadius={35}
+                    dataKey="value"
+                  >
+                    {paymentPieData.map((entry, index) => (
+                      <Cell 
+                        key={`cell-${index}`} 
+                        fill={Object.values(PAYMENT_METHOD_COLORS)[index % Object.values(PAYMENT_METHOD_COLORS).length]} 
+                      />
+                    ))}
+                  </Pie>
+                  <Tooltip
+                    formatter={(value: number) => [`¥${value.toFixed(2)}`, '金额']}
+                    contentStyle={{
+                      backgroundColor: '#fff',
+                      border: '1px solid #E5E6EB',
+                      borderRadius: '8px',
+                    }}
+                  />
+                </PieChart>
+              </ResponsiveContainer>
+            ) : (
+              <div className="h-full flex items-center justify-center text-gray-400">
+                暂无数据
+              </div>
+            )}
+          </div>
+          {stats && stats.paymentStats.length > 0 && (
+            <div className="mt-4 space-y-2">
+              {stats.paymentStats.map((item) => (
+                <div key={item.method} className="flex items-center justify-between text-sm">
+                  <div className="flex items-center gap-2">
+                    <div
+                      className="w-3 h-3 rounded-full"
+                      style={{ backgroundColor: PAYMENT_METHOD_COLORS[item.method] }}
+                    />
+                    <span className="text-gray-600">{item.methodName}</span>
+                  </div>
+                  <div className="text-right">
+                    <span className="font-mono font-medium text-gray-600">¥{item.amount.toFixed(2)}</span>
+                    <span className="text-gray-400 ml-2">({item.count}笔)</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        <div className="card p-6 lg:col-span-2">
+          <h3 className="text-lg font-semibold text-gray-600 mb-4">支付方式明细</h3>
+          <div className="overflow-x-auto">
+            <table className="w-full">
+              <thead>
+                <tr className="border-b border-gray-100">
+                  <th className="text-left py-3 px-4 text-sm font-medium text-gray-400">支付方式</th>
+                  <th className="text-right py-3 px-4 text-sm font-medium text-gray-400">交易笔数</th>
+                  <th className="text-right py-3 px-4 text-sm font-medium text-gray-400">金额</th>
+                  <th className="text-right py-3 px-4 text-sm font-medium text-gray-400">占比</th>
+                  <th className="text-right py-3 px-4 text-sm font-medium text-gray-400 w-2/5">进度</th>
+                </tr>
+              </thead>
+              <tbody>
+                {stats?.paymentStats.map((item, index) => {
+                  const percentage = totalPaymentAmount > 0 ? (item.amount / totalPaymentAmount) * 100 : 0;
+                  return (
+                    <tr key={item.method} className="border-b border-gray-50 hover:bg-gray-50 transition-colors">
+                      <td className="py-4 px-4">
+                        <div className="flex items-center gap-2">
+                          <div
+                            className="w-3 h-3 rounded-full"
+                            style={{ backgroundColor: PAYMENT_METHOD_COLORS[item.method] }}
+                          />
+                          <span className="font-medium text-gray-600">{item.methodName}</span>
+                        </div>
+                      </td>
+                      <td className="py-4 px-4 text-right font-mono">{item.count} 笔</td>
+                      <td className="py-4 px-4 text-right font-mono font-semibold text-danger">¥{item.amount.toFixed(2)}</td>
+                      <td className="py-4 px-4 text-right text-gray-400">{percentage.toFixed(1)}%</td>
+                      <td className="py-4 px-4">
+                        <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
+                          <div
+                            className="h-full rounded-full transition-all duration-500"
+                            style={{
+                              width: `${percentage}%`,
+                              backgroundColor: PAYMENT_METHOD_COLORS[item.method],
+                            }}
+                          />
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+                {(!stats || stats.paymentStats.length === 0) && (
+                  <tr>
+                    <td colSpan={5} className="py-8 text-center text-gray-400">
+                      暂无支付数据
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
       {stats && stats.typeStats.length > 0 && (
-        <div className="card p-6 mt-6 animate-fade-in animate-stagger-5">
+        <div className="card p-6 animate-fade-in animate-stagger-5">
           <h3 className="text-lg font-semibold text-gray-600 mb-4">类型明细</h3>
           <div className="overflow-x-auto">
             <table className="w-full">
@@ -248,7 +377,7 @@ export default function StatisticsPage() {
                       <td className="py-4 px-4 font-medium text-gray-600">{item.typeName}</td>
                       <td className="py-4 px-4 text-right font-mono font-semibold">{item.count} 件</td>
                       <td className="py-4 px-4 text-right text-gray-400">{percentage.toFixed(1)}%</td>
-                      <td className="py-4 px-4 w-48">
+                      <td className="py-4 px-4 w-2/5">
                         <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
                           <div
                             className="h-full rounded-full transition-all duration-500"

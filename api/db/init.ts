@@ -30,6 +30,7 @@ CREATE TABLE IF NOT EXISTS clothing (
     actual_pickup_date DATE,
     status VARCHAR(20) NOT NULL DEFAULT 'received',
     remark TEXT,
+    payment_method VARCHAR(20) DEFAULT 'none',
     status_history TEXT NOT NULL,
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
@@ -40,6 +41,23 @@ CREATE INDEX IF NOT EXISTS idx_clothing_phone ON clothing(customer_phone);
 CREATE INDEX IF NOT EXISTS idx_clothing_status ON clothing(status);
 CREATE INDEX IF NOT EXISTS idx_clothing_receive_date ON clothing(receive_date);
 CREATE INDEX IF NOT EXISTS idx_clothing_expected_date ON clothing(expected_pickup_date);
+CREATE INDEX IF NOT EXISTS idx_clothing_payment ON clothing(payment_method);
+
+CREATE TABLE IF NOT EXISTS customer (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    phone VARCHAR(20) NOT NULL UNIQUE,
+    name VARCHAR(50),
+    remark TEXT,
+    total_count INTEGER NOT NULL DEFAULT 0,
+    total_amount DECIMAL(10, 2) NOT NULL DEFAULT 0,
+    last_visit_date DATE,
+    favorite_type VARCHAR(20),
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_customer_phone ON customer(phone);
+CREATE INDEX IF NOT EXISTS idx_customer_name ON customer(name);
 
 CREATE TABLE IF NOT EXISTS clothing_type_config (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -56,6 +74,42 @@ INSERT OR IGNORE INTO clothing_type_config (type_code, type_name, default_price)
     ('dress', '裙装', 30.00),
     ('shirt', '衬衫', 15.00);
 `;
+
+try {
+  const upgradeSQL = `
+    ALTER TABLE clothing ADD COLUMN payment_method VARCHAR(20) DEFAULT 'none';
+  `;
+  db.exec(upgradeSQL);
+} catch (e) {
+  // 列可能已存在，忽略错误
+}
+
+try {
+  const customerTableSQL = `
+    CREATE TABLE IF NOT EXISTS customer (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      phone VARCHAR(20) NOT NULL UNIQUE,
+      name VARCHAR(50),
+      remark TEXT,
+      total_count INTEGER NOT NULL DEFAULT 0,
+      total_amount DECIMAL(10, 2) NOT NULL DEFAULT 0,
+      last_visit_date DATE,
+      favorite_type VARCHAR(20),
+      created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+    );
+  `;
+  db.exec(customerTableSQL);
+  
+  const indexSQL = `
+    CREATE INDEX IF NOT EXISTS idx_customer_phone ON customer(phone);
+    CREATE INDEX IF NOT EXISTS idx_customer_name ON customer(name);
+    CREATE INDEX IF NOT EXISTS idx_clothing_payment ON clothing(payment_method);
+  `;
+  db.exec(indexSQL);
+} catch (e) {
+  console.error('数据库升级失败', e);
+}
 
 db.exec(initSQL);
 

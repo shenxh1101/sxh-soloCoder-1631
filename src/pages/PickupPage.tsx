@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
-import { Search, Check, Phone, Clock, AlertCircle, ScanLine } from 'lucide-react';
-import { Clothing, CLOTHING_TYPE_LABELS, STATUS_COLORS } from '../../shared/types';
+import { Search, Check, Phone, Clock, AlertCircle, ScanLine, Wallet } from 'lucide-react';
+import { Clothing, CLOTHING_TYPE_LABELS, STATUS_COLORS, PaymentMethod, PAYMENT_METHOD_LABELS, PAYMENT_METHOD_COLORS } from '../../shared/types';
 import { clothingApi } from '../utils/api';
 import { useStore } from '../store/useStore';
 import StatusBadge from '../components/StatusBadge';
@@ -14,6 +14,7 @@ export default function PickupPage() {
   const [loading, setLoading] = useState(false);
   const [pickingUp, setPickingUp] = useState(false);
   const [notFound, setNotFound] = useState(false);
+  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('cash');
   const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -50,13 +51,13 @@ export default function PickupPage() {
   const handlePickup = async () => {
     if (!clothing || clothing.status === 'completed') return;
 
-    if (!confirm(`确认取衣？\n衣物：${CLOTHING_TYPE_LABELS[clothing.clothingType]}\n金额：¥${clothing.price.toFixed(2)}`)) {
+    if (!confirm(`确认取衣？\n衣物：${CLOTHING_TYPE_LABELS[clothing.clothingType]}\n金额：¥${clothing.price.toFixed(2)}\n支付方式：${PAYMENT_METHOD_LABELS[paymentMethod]}`)) {
       return;
     }
 
     setPickingUp(true);
     try {
-      const updated = await clothingApi.pickup(clothing.id);
+      const updated = await clothingApi.pickup(clothing.id, paymentMethod);
       setClothing(updated);
       updateClothingInList(updated);
       alert('取衣成功！');
@@ -75,8 +76,11 @@ export default function PickupPage() {
     setBarcode('');
     setClothing(null);
     setNotFound(false);
+    setPaymentMethod('cash');
     inputRef.current?.focus();
   };
+
+  const paymentMethods: PaymentMethod[] = ['cash', 'wechat', 'alipay'];
 
   return (
     <div className="animate-fade-in">
@@ -189,6 +193,17 @@ export default function PickupPage() {
                       <span className="text-success font-medium">{clothing.actualPickupDate}</span>
                     </div>
                   )}
+                  {clothing.paymentMethod && clothing.paymentMethod !== 'none' && (
+                    <div className="flex justify-between items-center">
+                      <span className="text-gray-400">支付方式</span>
+                      <span 
+                        className="font-medium"
+                        style={{ color: PAYMENT_METHOD_COLORS[clothing.paymentMethod] }}
+                      >
+                        {PAYMENT_METHOD_LABELS[clothing.paymentMethod]}
+                      </span>
+                    </div>
+                  )}
                 </div>
 
                 <div className="p-6 bg-gradient-to-br from-accent-500/10 to-accent-500/5 rounded-xl border border-accent-500/20">
@@ -235,6 +250,45 @@ export default function PickupPage() {
                   ))}
                 </div>
               </div>
+
+              {clothing.status !== 'completed' && (
+                <div className="mb-6">
+                  <p className="text-sm text-gray-400 mb-3 flex items-center gap-2">
+                    <Wallet className="w-4 h-4" />
+                    选择支付方式
+                  </p>
+                  <div className="grid grid-cols-3 gap-3">
+                    {paymentMethods.map((method) => (
+                      <button
+                        key={method}
+                        onClick={() => setPaymentMethod(method)}
+                        className={`p-4 rounded-xl border-2 transition-all ${
+                          paymentMethod === method
+                            ? 'border-primary-500 bg-primary-50'
+                            : 'border-gray-200 hover:border-gray-300'
+                        }`}
+                      >
+                        <div
+                          className="w-10 h-10 rounded-full mx-auto mb-2 flex items-center justify-center"
+                          style={{ backgroundColor: `${PAYMENT_METHOD_COLORS[method]}15` }}
+                        >
+                          <span className="text-lg">
+                            {method === 'cash' && '💵'}
+                            {method === 'wechat' && '💚'}
+                            {method === 'alipay' && '💙'}
+                          </span>
+                        </div>
+                        <p
+                          className="text-sm font-medium text-center"
+                          style={{ color: paymentMethod === method ? PAYMENT_METHOD_COLORS[method] : '#86909C' }}
+                        >
+                          {PAYMENT_METHOD_LABELS[method]}
+                        </p>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
 
               <div className="flex gap-3">
                 <button onClick={handleReset} className="btn btn-secondary flex-1">

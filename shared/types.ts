@@ -2,6 +2,8 @@ export type ClothingStatus = 'received' | 'washing' | 'ironing' | 'inspecting' |
 
 export type ClothingType = 'suit' | 'coat' | 'downjacket' | 'dress' | 'shirt';
 
+export type PaymentMethod = 'cash' | 'wechat' | 'alipay' | 'none';
+
 export interface StatusRecord {
   status: ClothingStatus;
   timestamp: string;
@@ -20,9 +22,27 @@ export interface Clothing {
   actualPickupDate?: string;
   status: ClothingStatus;
   remark?: string;
+  paymentMethod?: PaymentMethod;
   statusHistory: StatusRecord[];
   createdAt: string;
   updatedAt: string;
+}
+
+export interface Customer {
+  id: number;
+  phone: string;
+  name?: string;
+  remark?: string;
+  totalCount: number;
+  totalAmount: number;
+  lastVisitDate?: string;
+  favoriteType?: ClothingType;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CustomerDetail extends Customer {
+  history: Clothing[];
 }
 
 export interface ClothingTypeConfig {
@@ -37,6 +57,7 @@ export interface MonthlyStats {
   totalRevenue: number;
   typeStats: { type: ClothingType; typeName: string; count: number }[];
   dailyStats: { date: string; count: number; revenue: number }[];
+  paymentStats: { method: PaymentMethod; methodName: string; count: number; amount: number }[];
   overdueCount: number;
 }
 
@@ -47,6 +68,26 @@ export interface CreateClothingRequest {
   price: number;
   expectedPickupDate: string;
   remark?: string;
+}
+
+export interface PickupRequest {
+  paymentMethod?: PaymentMethod;
+}
+
+export interface BatchUpdateStatusRequest {
+  ids: number[];
+  status: ClothingStatus;
+}
+
+export interface ClothingSearchParams {
+  status?: ClothingStatus;
+  clothingType?: ClothingType;
+  phone?: string;
+  barcode?: string;
+  startDate?: string;
+  endDate?: string;
+  page?: number;
+  pageSize?: number;
 }
 
 export const CLOTHING_STATUS_LABELS: Record<ClothingStatus, string> = {
@@ -90,4 +131,18 @@ export const DEFAULT_PRICES: Record<ClothingType, number> = {
   downjacket: 60,
   dress: 30,
   shirt: 15,
+};
+
+export const PAYMENT_METHOD_LABELS: Record<PaymentMethod, string> = {
+  cash: '现金',
+  wechat: '微信支付',
+  alipay: '支付宝',
+  none: '未支付',
+};
+
+export const PAYMENT_METHOD_COLORS: Record<PaymentMethod, string> = {
+  cash: '#1D2129',
+  wechat: '#07C160',
+  alipay: '#1677FF',
+  none: '#86909C',
 };

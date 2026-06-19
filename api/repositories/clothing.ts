@@ -1,6 +1,7 @@
 import db from '../db/init';
-import { Clothing, ClothingStatus, ClothingType, CreateClothingRequest, StatusRecord } from '../../shared/types';
+import { Clothing, ClothingStatus, ClothingType, CreateClothingRequest, StatusRecord, ClothingSearchParams, PaymentMethod } from '../../shared/types';
 import { generateBarcode, formatDate } from '../utils/barcode';
+import { updateCustomerStats } from './customer';
 
 function rowToClothing(row: any): Clothing {
   return {
@@ -15,6 +16,7 @@ function rowToClothing(row: any): Clothing {
     actualPickupDate: row.actual_pickup_date || undefined,
     status: row.status as ClothingStatus,
     remark: row.remark || undefined,
+    paymentMethod: (row.payment_method as PaymentMethod) || 'none',
     statusHistory: JSON.parse(row.status_history),
     createdAt: row.created_at,
     updatedAt: row.updated_at,
@@ -32,8 +34,8 @@ export function createClothing(data: CreateClothingRequest): Clothing {
   const stmt = db.prepare(`
     INSERT INTO clothing (
       barcode, clothing_type, customer_phone, customer_name, price,
-      receive_date, expected_pickup_date, status, remark, status_history
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      receive_date, expected_pickup_date, status, remark, status_history, payment_method
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
 
   const result = stmt.run(
@@ -46,10 +48,19 @@ export function createClothing(data: CreateClothingRequest): Clothing {
     data.expectedPickupDate,
     'received',
     data.remark || null,
-    JSON.stringify(initialHistory)
+    JSON.stringify(initialHistory),
+    'none'
   );
 
-  return getClothingById(result.lastInsertRowid as number)!;
+  const clothing = getClothingById(result.lastInsertRowid as number)!;
+  
+  try {
+    updateCustomerStats(data.customerPhone);
+  } catch (e) {
+    console.error('更新客户统计失败', e);
+  }
+
+  return clothing;
 }
 
 export function getClothingById(id: number): Clothing | null {
@@ -96,6 +107,63 @@ export function getClothingList(
   };
 }
 
+export function searchClothing(params: ClothingSearchParams): { list: Clothing[]; total: number } {
+  const conditions: string[] = [];
+  const queryParams: any[] = [];
+
+  if (params.status) {
+    conditions.push('status = ?');
+    queryParams.push(params.status);
+  }
+
+  if (params.clothingType) {
+    conditions.push('clothing_type = ?');
+    queryParams.push(params.clothingType);
+  }
+
+  if (params.phone) {
+    conditions.push('customer_phone LIKE ?');
+    queryParams.push(`%${params.phone}%`);
+  }
+
+  if (params.barcode) {
+    conditions.push('barcode LIKE ?');
+    queryParams.push(`%${params.barcode}%`);
+  }
+
+  if (params.startDate) {
+    conditions.push('receive_date >= ?');
+    queryParams.push(params.startDate);
+  }
+
+  if (params.endDate) {
+    conditions.push('receive_date <= ?');
+    queryParams.push(params.endDate);
+  }
+
+  const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
+
+  const countStmt = db.prepare(`SELECT COUNT(*) as count FROM clothing ${whereClause}`);
+  const { count } = countStmt.get(...queryParams) as { count: number };
+
+  const page = params.page || 1;
+  const pageSize = params.pageSize || 50;
+  const offset = (page - 1) * pageSize;
+  queryParams.push(pageSize, offset);
+
+  const listStmt = db.prepare(`
+    SELECT * FROM clothing ${whereClause}
+    ORDER BY created_at DESC
+    LIMIT ? OFFSET ?
+  `);
+  const rows = listStmt.all(...queryParams);
+
+  return {
+    list: rows.map(rowToClothing),
+    total: count,
+  };
+}
+
 export function updateClothingStatus(id: number, newStatus: ClothingStatus): Clothing | null {
   const clothing = getClothingById(id);
   if (!clothing) return null;
@@ -133,8 +201,58 @@ export function updateClothingStatus(id: number, newStatus: ClothingStatus): Clo
   return getClothingById(id);
 }
 
-export function pickupClothing(id: number): Clothing | null {
-  return updateClothingStatus(id, 'completed');
+export function batchUpdateStatus(ids: number[], newStatus: ClothingStatus): Clothing[] {
+  const updated: Clothing[] = [];
+  const transaction = db.transaction((idList: number[]) => {
+    for (const id of idList) {
+      const result = updateClothingStatus(id, newStatus);
+      if (result) updated.push(result);
+    }
+  });
+  transaction(ids);
+  return updated;
+}
+
+export function pickupClothing(id: number, paymentMethod: PaymentMethod = 'cash'): Clothing | null {
+  const clothing = getClothingById(id);
+  if (!clothing) return null;
+
+  const newHistory: StatusRecord[] = [
+    ...clothing.statusHistory,
+    {
+      status: 'completed',
+      timestamp: new Date().toISOString(),
+    },
+  ];
+
+  const stmt = db.prepare(`
+    UPDATE clothing 
+    SET status = 'completed', 
+        status_history = ?, 
+        actual_pickup_date = ?,
+        payment_method = ?,
+        updated_at = CURRENT_TIMESTAMP
+    WHERE id = ?
+  `);
+
+  stmt.run(
+    JSON.stringify(newHistory),
+    formatDate(new Date()),
+    paymentMethod,
+    id
+  );
+
+  const updated = getClothingById(id);
+  
+  if (updated) {
+    try {
+      updateCustomerStats(updated.customerPhone);
+    } catch (e) {
+      console.error('更新客户统计失败', e);
+    }
+  }
+
+  return updated;
 }
 
 export function getOverdueClothing(): Clothing[] {
@@ -154,7 +272,7 @@ export function getCustomerHistory(phone: string): Clothing[] {
     SELECT * FROM clothing 
     WHERE customer_phone = ?
     ORDER BY created_at DESC
-    LIMIT 20
+    LIMIT 100
   `);
   const rows = stmt.all(phone);
   return rows.map(rowToClothing);

@@ -1,22 +1,46 @@
-import { useState, useEffect } from 'react';
-import { RefreshCw, Phone, Clock, AlertTriangle, ArrowRight } from 'lucide-react';
-import { Clothing, ClothingStatus, CLOTHING_STATUS_LABELS, STATUS_FLOW, STATUS_COLORS, CLOTHING_TYPE_LABELS } from '../../shared/types';
+import { useState, useEffect, useMemo } from 'react';
+import { RefreshCw, Phone, Clock, AlertTriangle, ArrowRight, Search, Filter, CheckSquare, Square, Printer, X, ChevronDown } from 'lucide-react';
+import { Clothing, ClothingStatus, CLOTHING_STATUS_LABELS, STATUS_FLOW, STATUS_COLORS, CLOTHING_TYPE_LABELS, ClothingType } from '../../shared/types';
 import { clothingApi } from '../utils/api';
 import { useStore } from '../store/useStore';
 import StatusBadge from '../components/StatusBadge';
 import Barcode from '../components/Barcode';
+import Receipt from '../components/Receipt';
 import { isOverdue } from '../../shared/utils';
+import { useSearchParams } from 'react-router-dom';
 
 export default function StatusPage() {
-  const { clothingList, setClothingList, overdueList, setOverdueList, selectedStatus, setSelectedStatus, updateClothingInList, setLoading } = useStore();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const { clothingList, setClothingList, overdueList, setOverdueList, loading, setLoading } = useStore();
   const [activeTab, setActiveTab] = useState<ClothingStatus | 'all'>('all');
-  const [updatingId, setUpdatingId] = useState<number | null>(null);
+  const [updatingIds, setUpdatingIds] = useState<Set<number>>(new Set());
+  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
+  const [showFilters, setShowFilters] = useState(false);
+  const [searchKeyword, setSearchKeyword] = useState('');
+  const [filterType, setFilterType] = useState<ClothingType | ''>('');
+  const [startDate, setStartDate] = useState('');
+  const [endDate, setEndDate] = useState('');
+  const [printClothing, setPrintClothing] = useState<Clothing | null>(null);
+  const [showPrintModal, setShowPrintModal] = useState(false);
 
   const loadData = async () => {
     setLoading(true);
     try {
+      const params: any = {};
+      if (activeTab !== 'all') params.status = activeTab;
+      if (searchKeyword) {
+        if (/^\d+$/.test(searchKeyword) && searchKeyword.length >= 11) {
+          params.phone = searchKeyword;
+        } else {
+          params.barcode = searchKeyword;
+        }
+      }
+      if (filterType) params.clothingType = filterType;
+      if (startDate) params.startDate = startDate;
+      if (endDate) params.endDate = endDate;
+
       const [listResult, overdueResult] = await Promise.all([
-        clothingApi.list(activeTab === 'all' ? undefined : activeTab),
+        Object.keys(params).length > 0 ? clothingApi.search(params) : clothingApi.list(activeTab === 'all' ? undefined : activeTab),
         clothingApi.getOverdue(),
       ]);
       setClothingList(listResult.list);
@@ -32,26 +56,101 @@ export default function StatusPage() {
     loadData();
   }, [activeTab]);
 
+  useEffect(() => {
+    const printId = searchParams.get('print');
+    if (printId) {
+      clothingApi.getById(parseInt(printId)).then(clothing => {
+        if (clothing) {
+          setPrintClothing(clothing);
+          setShowPrintModal(true);
+        }
+      });
+      setSearchParams({});
+    }
+  }, [searchParams]);
+
+  const handleSearch = () => {
+    loadData();
+  };
+
   const handleStatusUpdate = async (clothing: Clothing) => {
     const nextStatus = STATUS_FLOW[clothing.status];
     if (!nextStatus) return;
 
-    setUpdatingId(clothing.id);
+    setUpdatingIds(prev => new Set(prev).add(clothing.id));
     try {
       const updated = await clothingApi.updateStatus(clothing.id, nextStatus);
-      updateClothingInList(updated);
-      if (activeTab !== 'all' && activeTab !== updated.status) {
-        loadData();
-      }
+      await loadData();
     } catch (error) {
       alert('状态更新失败');
     } finally {
-      setUpdatingId(null);
+      setUpdatingIds(prev => {
+        const next = new Set(prev);
+        next.delete(clothing.id);
+        return next;
+      });
+    }
+  };
+
+  const handleBatchUpdate = async () => {
+    if (selectedIds.size === 0) return;
+    
+    const firstItem = clothingList.find(c => selectedIds.has(c.id));
+    if (!firstItem) return;
+    
+    const nextStatus = STATUS_FLOW[firstItem.status];
+    if (!nextStatus) {
+      alert('已完成的衣物无法批量操作');
+      return;
+    }
+
+    if (!confirm(`确定将选中的 ${selectedIds.size} 件衣物状态更新为"${CLOTHING_STATUS_LABELS[nextStatus]}"吗？`)) {
+      return;
+    }
+
+    setUpdatingIds(new Set(selectedIds));
+    try {
+      await clothingApi.batchUpdateStatus(Array.from(selectedIds), nextStatus);
+      setSelectedIds(new Set());
+      await loadData();
+    } catch (error) {
+      alert('批量更新失败');
+    } finally {
+      setUpdatingIds(new Set());
     }
   };
 
   const handleCallCustomer = (phone: string) => {
     window.location.href = `tel:${phone}`;
+  };
+
+  const handlePrint = (clothing: Clothing) => {
+    setPrintClothing(clothing);
+    setShowPrintModal(true);
+  };
+
+  const handlePrintConfirm = () => {
+    window.print();
+  };
+
+  const toggleSelect = (id: number) => {
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
+  };
+
+  const toggleSelectAll = () => {
+    if (selectedIds.size === filteredList.length) {
+      setSelectedIds(new Set());
+    } else {
+      setSelectedIds(new Set(filteredList.map(c => c.id)));
+    }
   };
 
   const statusTabs: (ClothingStatus | 'all')[] = ['all', 'received', 'washing', 'ironing', 'inspecting', 'waiting'];
@@ -61,7 +160,26 @@ export default function StatusPage() {
     return next ? CLOTHING_STATUS_LABELS[next] : null;
   };
 
-  const filteredList = activeTab === 'all' ? clothingList : clothingList.filter(c => c.status === activeTab);
+  const filteredList = useMemo(() => {
+    return clothingList;
+  }, [clothingList]);
+
+  const canBatchUpdate = useMemo(() => {
+    if (selectedIds.size === 0) return false;
+    const firstStatus = clothingList.find(c => selectedIds.has(c.id))?.status;
+    if (!firstStatus) return false;
+    return Array.from(selectedIds).every(id => {
+      const item = clothingList.find(c => c.id === id);
+      return item && item.status === firstStatus && STATUS_FLOW[item.status];
+    });
+  }, [selectedIds, clothingList]);
+
+  const batchNextStatus = useMemo(() => {
+    if (!canBatchUpdate) return null;
+    const firstItem = clothingList.find(c => selectedIds.has(c.id));
+    if (!firstItem) return null;
+    return STATUS_FLOW[firstItem.status];
+  }, [canBatchUpdate, clothingList]);
 
   return (
     <div className="animate-fade-in">
@@ -70,10 +188,12 @@ export default function StatusPage() {
           <h2 className="text-2xl font-bold text-gray-600">状态管理</h2>
           <p className="text-sm text-gray-400 mt-1">查看和更新衣物洗护状态</p>
         </div>
-        <button onClick={loadData} className="btn btn-secondary">
-          <RefreshCw className="w-4 h-4" />
-          刷新
-        </button>
+        <div className="flex gap-3">
+          <button onClick={loadData} className="btn btn-secondary">
+            <RefreshCw className="w-4 h-4" />
+            刷新
+          </button>
+        </div>
       </div>
 
       {overdueList.length > 0 && (
@@ -111,6 +231,82 @@ export default function StatusPage() {
       )}
 
       <div className="card mb-6 overflow-hidden animate-fade-in animate-stagger-2">
+        <div className="p-4 border-b border-gray-100">
+          <div className="flex items-center justify-between gap-4 mb-4">
+            <div className="flex-1 relative">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+              <input
+                type="text"
+                placeholder="搜索手机号或条码..."
+                value={searchKeyword}
+                onChange={(e) => setSearchKeyword(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
+                className="w-full pl-10 pr-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary-500/20 focus:border-primary-500 transition-all"
+              />
+            </div>
+            <button
+              onClick={() => setShowFilters(!showFilters)}
+              className={`flex items-center gap-2 px-4 py-2.5 rounded-xl border transition-all ${
+                showFilters ? 'bg-primary-50 border-primary-200 text-primary-600' : 'border-gray-200 text-gray-400 hover:bg-gray-50'
+              }`}
+            >
+              <Filter className="w-4 h-4" />
+              筛选
+              <ChevronDown className={`w-4 h-4 transition-transform ${showFilters ? 'rotate-180' : ''}`} />
+            </button>
+            <button onClick={handleSearch} className="btn btn-accent">
+              <Search className="w-4 h-4" />
+              搜索
+            </button>
+          </div>
+
+          {showFilters && (
+            <div className="flex items-center gap-4 p-4 bg-gray-50 rounded-xl">
+              <div className="flex items-center gap-2">
+                <span className="text-sm text-gray-500">衣物类型：</span>
+                <select
+                  value={filterType}
+                  onChange={(e) => setFilterType(e.target.value as ClothingType | '')}
+                  className="input text-sm py-2"
+                >
+                  <option value="">全部</option>
+                  {Object.entries(CLOTHING_TYPE_LABELS).map(([code, name]) => (
+                    <option key={code} value={code}>{name}</option>
+                  ))}
+                </select>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="text-sm text-gray-500">收衣日期：</span>
+                <input
+                  type="date"
+                  value={startDate}
+                  onChange={(e) => setStartDate(e.target.value)}
+                  className="input text-sm py-2"
+                />
+                <span className="text-gray-400">至</span>
+                <input
+                  type="date"
+                  value={endDate}
+                  onChange={(e) => setEndDate(e.target.value)}
+                  className="input text-sm py-2"
+                />
+              </div>
+              <button
+                onClick={() => {
+                  setFilterType('');
+                  setStartDate('');
+                  setEndDate('');
+                  setSearchKeyword('');
+                  loadData();
+                }}
+                className="text-sm text-gray-400 hover:text-gray-600"
+              >
+                重置
+              </button>
+            </div>
+          )}
+        </div>
+
         <div className="flex border-b border-gray-100 overflow-x-auto">
           {statusTabs.map((tab) => (
             <button
@@ -129,9 +325,50 @@ export default function StatusPage() {
             </button>
           ))}
         </div>
+
+        {selectedIds.size > 0 && (
+          <div className="px-6 py-3 bg-primary-50 border-b border-primary-100 flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <button onClick={toggleSelectAll} className="text-primary-600">
+                {selectedIds.size === filteredList.length ? (
+                  <CheckSquare className="w-5 h-5" />
+                ) : (
+                  <Square className="w-5 h-5" />
+                )}
+              </button>
+              <span className="text-sm text-primary-700">
+                已选择 <span className="font-bold">{selectedIds.size}</span> 件衣物
+              </span>
+            </div>
+            <div className="flex gap-2">
+              <button
+                onClick={() => setSelectedIds(new Set())}
+                className="btn btn-secondary text-sm py-2"
+              >
+                取消选择
+              </button>
+              {batchNextStatus && (
+                <button
+                  onClick={handleBatchUpdate}
+                  disabled={!canBatchUpdate || updatingIds.size > 0}
+                  className="btn text-sm py-2 text-white"
+                  style={{ backgroundColor: STATUS_COLORS[batchNextStatus] }}
+                >
+                  <ArrowRight className="w-4 h-4" />
+                  批量{CLOTHING_STATUS_LABELS[batchNextStatus]}
+                </button>
+              )}
+            </div>
+          </div>
+        )}
       </div>
 
-      {filteredList.length === 0 ? (
+      {loading ? (
+        <div className="card p-12 text-center">
+          <RefreshCw className="w-8 h-8 text-gray-300 mx-auto mb-4 animate-spin" />
+          <p className="text-gray-400">加载中...</p>
+        </div>
+      ) : filteredList.length === 0 ? (
         <div className="card p-12 text-center">
           <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
             <Clock className="w-8 h-8 text-gray-300" />
@@ -144,23 +381,44 @@ export default function StatusPage() {
             const overdue = isOverdue(clothing.expectedPickupDate, clothing.status);
             const nextStatus = getNextStatusLabel(clothing.status);
             const staggerClass = `animate-stagger-${(index % 5) + 1}` as const;
+            const isSelected = selectedIds.has(clothing.id);
+            const isUpdating = updatingIds.has(clothing.id);
 
             return (
               <div
                 key={clothing.id}
-                className={`card card-hover p-5 animate-fade-in ${staggerClass} ${
+                className={`card card-hover p-5 animate-fade-in ${staggerClass} relative ${
                   overdue ? 'border-2 border-danger/50 bg-danger/5' : ''
-                }`}
+                } ${isSelected ? 'ring-2 ring-primary-500' : ''}`}
               >
+                <button
+                  onClick={() => toggleSelect(clothing.id)}
+                  className="absolute top-4 left-4 z-10 text-primary-500 hover:text-primary-600"
+                >
+                  {isSelected ? (
+                    <CheckSquare className="w-5 h-5 fill-primary-500 text-white" />
+                  ) : (
+                    <Square className="w-5 h-5 text-gray-300" />
+                  )}
+                </button>
+
+                <button
+                  onClick={() => handlePrint(clothing)}
+                  className="absolute top-4 right-4 z-10 text-gray-400 hover:text-primary-500 transition-colors"
+                  title="补打取衣单"
+                >
+                  <Printer className="w-4 h-4" />
+                </button>
+
                 {overdue && (
-                  <div className="absolute -top-2 -left-2">
+                  <div className="absolute -top-2 -left-2 z-10">
                     <span className="bg-danger text-white text-xs px-2 py-1 rounded-full font-medium animate-pulse-soft">
                       逾期
                     </span>
                   </div>
                 )}
 
-                <div className="flex items-start justify-between mb-4">
+                <div className="flex items-start justify-between mb-4 pl-8">
                   <div className="flex items-center gap-3">
                     <div className="w-12 h-12 rounded-xl flex items-center justify-center" style={{ backgroundColor: `${STATUS_COLORS[clothing.status]}15` }}>
                       <span className="text-2xl">
@@ -216,24 +474,59 @@ export default function StatusPage() {
                 {nextStatus && (
                   <button
                     onClick={() => handleStatusUpdate(clothing)}
-                    disabled={updatingId === clothing.id}
+                    disabled={isUpdating}
                     className="btn w-full"
                     style={{
                       backgroundColor: STATUS_COLORS[STATUS_FLOW[clothing.status]!],
                       color: 'white',
                     }}
                   >
-                    {updatingId === clothing.id ? (
+                    {isUpdating ? (
                       <RefreshCw className="w-4 h-4 animate-spin" />
                     ) : (
                       <ArrowRight className="w-4 h-4" />
                     )}
-                    {updatingId === clothing.id ? '更新中...' : nextStatus}
+                    {isUpdating ? '更新中...' : nextStatus}
                   </button>
                 )}
               </div>
             );
           })}
+        </div>
+      )}
+
+      {showPrintModal && printClothing && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 print:hidden">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full mx-4 overflow-hidden">
+            <div className="p-4 border-b border-gray-100 flex items-center justify-between">
+              <h3 className="font-bold text-gray-600">补打取衣单</h3>
+              <button onClick={() => setShowPrintModal(false)} className="text-gray-400 hover:text-gray-600">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="p-6">
+              <div className="bg-gray-50 rounded-xl p-4 border border-gray-100">
+                <Receipt clothing={printClothing} />
+              </div>
+            </div>
+            <div className="p-4 border-t border-gray-100 flex gap-3">
+              <button onClick={() => setShowPrintModal(false)} className="btn btn-secondary flex-1">
+                取消
+              </button>
+              <button onClick={handlePrintConfirm} className="btn btn-accent flex-1">
+                <Printer className="w-4 h-4" />
+                打印
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showPrintModal && printClothing && (
+        <div className="hidden print:block fixed inset-0 bg-white z-50 print-receipt">
+          <div className="p-8">
+            <Receipt clothing={printClothing} />
+          </div>
         </div>
       )}
     </div>

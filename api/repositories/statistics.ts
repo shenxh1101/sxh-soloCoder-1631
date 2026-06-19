@@ -1,5 +1,5 @@
 import db from '../db/init';
-import { ClothingType, CLOTHING_TYPE_LABELS, MonthlyStats } from '../../shared/types';
+import { ClothingType, CLOTHING_TYPE_LABELS, MonthlyStats, PAYMENT_METHOD_LABELS, PaymentMethod } from '../../shared/types';
 import { formatDate } from '../utils/barcode';
 
 export function getMonthlyStats(year?: number, month?: number): MonthlyStats {
@@ -14,7 +14,7 @@ export function getMonthlyStats(year?: number, month?: number): MonthlyStats {
   const countStmt = db.prepare(`
     SELECT 
       COUNT(*) as totalCount,
-      COALESCE(SUM(price), 0) as totalRevenue
+      COALESCE(SUM(CASE WHEN status = 'completed' AND payment_method != 'none' THEN price ELSE 0 END), 0) as totalRevenue
     FROM clothing
     WHERE receive_date BETWEEN ? AND ?
   `);
@@ -47,7 +47,7 @@ export function getMonthlyStats(year?: number, month?: number): MonthlyStats {
     SELECT 
       receive_date as date,
       COUNT(*) as count,
-      COALESCE(SUM(price), 0) as revenue
+      COALESCE(SUM(CASE WHEN status = 'completed' AND payment_method != 'none' THEN price ELSE 0 END), 0) as revenue
     FROM clothing
     WHERE receive_date BETWEEN ? AND ?
     GROUP BY receive_date
@@ -58,6 +58,31 @@ export function getMonthlyStats(year?: number, month?: number): MonthlyStats {
     count: number;
     revenue: number;
   }[];
+
+  const paymentStmt = db.prepare(`
+    SELECT 
+      payment_method as method,
+      COUNT(*) as count,
+      COALESCE(SUM(price), 0) as amount
+    FROM clothing
+    WHERE receive_date BETWEEN ? AND ?
+    AND status = 'completed'
+    AND payment_method != 'none'
+    GROUP BY payment_method
+    ORDER BY amount DESC
+  `);
+  const paymentRows = paymentStmt.all(startDate, endDateStr) as {
+    method: PaymentMethod;
+    count: number;
+    amount: number;
+  }[];
+
+  const paymentStats = paymentRows.map(row => ({
+    method: row.method,
+    methodName: PAYMENT_METHOD_LABELS[row.method],
+    count: row.count,
+    amount: row.amount,
+  }));
 
   const today = formatDate(new Date());
   const overdueStmt = db.prepare(`
@@ -73,6 +98,7 @@ export function getMonthlyStats(year?: number, month?: number): MonthlyStats {
     totalRevenue,
     typeStats,
     dailyStats: dailyRows,
+    paymentStats,
     overdueCount,
   };
 }

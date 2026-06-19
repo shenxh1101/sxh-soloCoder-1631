@@ -1,5 +1,5 @@
 import axios from 'axios';
-import { Clothing, ClothingStatus, CreateClothingRequest, MonthlyStats } from '../../shared/types';
+import { Clothing, ClothingStatus, CreateClothingRequest, MonthlyStats, Customer, CustomerDetail, ClothingSearchParams, PaymentMethod, BatchUpdateStatusRequest } from '../../shared/types';
 
 const api = axios.create({
   baseURL: '/api',
@@ -15,14 +15,28 @@ export const clothingApi = {
       params: { status, page, pageSize },
     }).then(res => res.data),
 
+  search: (params: ClothingSearchParams) =>
+    api.get<{ list: Clothing[]; total: number }>('/clothing/search', {
+      params,
+    }).then(res => res.data),
+
+  getById: (id: number) =>
+    api.get<Clothing>(`/clothing/${id}`).then(res => res.data),
+
   getByBarcode: (barcode: string) =>
     api.get<Clothing>(`/clothing/barcode/${barcode}`).then(res => res.data),
 
   updateStatus: (id: number, status: ClothingStatus) =>
     api.put<Clothing>(`/clothing/${id}/status`, { status }).then(res => res.data),
 
-  pickup: (id: number) =>
-    api.put<Clothing>(`/clothing/${id}/pickup`).then(res => res.data),
+  batchUpdateStatus: (ids: number[], status: ClothingStatus) =>
+    api.put<{ updated: number; items: Clothing[] }>('/clothing/batch/status', {
+      ids,
+      status,
+    } as BatchUpdateStatusRequest).then(res => res.data),
+
+  pickup: (id: number, paymentMethod: PaymentMethod = 'cash') =>
+    api.put<Clothing>(`/clothing/${id}/pickup`, { paymentMethod }).then(res => res.data),
 
   getOverdue: () =>
     api.get<Clothing[]>('/clothing/overdue').then(res => res.data),
@@ -33,6 +47,27 @@ export const clothingApi = {
   getTypeConfigs: () =>
     api.get<{ typeCode: string; typeName: string; defaultPrice: number }[]>('/clothing/type-configs')
       .then(res => res.data),
+};
+
+export const customerApi = {
+  getByPhone: (phone: string) =>
+    api.get<CustomerDetail>(`/customer/${phone}`).then(res => res.data),
+
+  getSimple: (phone: string) =>
+    api.get<Customer>(`/customer/${phone}/simple`).then(res => res.data),
+
+  update: (phone: string, data: { name?: string; remark?: string }) =>
+    api.put<Customer>(`/customer/${phone}`, data).then(res => res.data),
+
+  search: (keyword: string, page = 1, pageSize = 20) =>
+    api.get<{ list: Customer[]; total: number }>('/customer/search', {
+      params: { keyword, page, pageSize },
+    }).then(res => res.data),
+
+  getRecent: (limit = 20) =>
+    api.get<Customer[]>('/customer/recent', {
+      params: { limit },
+    }).then(res => res.data),
 };
 
 export const statisticsApi = {

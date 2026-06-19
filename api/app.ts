@@ -9,6 +9,7 @@ import dotenv from 'dotenv'
 import { fileURLToPath } from 'url'
 import clothingRoutes from './routes/clothing'
 import statisticsRoutes from './routes/statistics'
+import customerRoutes from './routes/customer'
 import './db/init'
 
 const __filename = fileURLToPath(import.meta.url)
@@ -24,6 +25,7 @@ app.use(express.urlencoded({ extended: true, limit: '10mb' }))
 
 app.use('/api/clothing', clothingRoutes)
 app.use('/api/statistics', statisticsRoutes)
+app.use('/api/customer', customerRoutes)
 
 app.use(
   '/api/health',
