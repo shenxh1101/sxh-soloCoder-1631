@@ -1,0 +1,189 @@
+@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --primary: #165DFF;
+  --primary-light: #4080FF;
+  --primary-dark: #0E42D2;
+  --accent: #FF7D00;
+  --accent-light: #FF9A2E;
+  --success: #00B42A;
+  --warning: #FF7D00;
+  --danger: #F53F3F;
+  --purple: #722ED1;
+  --cyan: #0FC6C2;
+  --gray-50: #F7F8FA;
+  --gray-100: #E5E6EB;
+  --gray-200: #C9CDD4;
+  --gray-300: #86909C;
+  --gray-400: #4E5969;
+  --gray-500: #272E3B;
+  --gray-600: #1D2129;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  font-family: 'Noto Sans SC', -apple-system, BlinkMacSystemFont, sans-serif;
+  background-color: var(--gray-50);
+  color: var(--gray-600);
+  line-height: 1.6;
+  margin: 0;
+  padding: 0;
+}
+
+.font-mono {
+  font-family: 'JetBrains Mono', monospace;
+}
+
+@layer components {
+  .btn {
+    @apply px-4 py-2 rounded-lg font-medium transition-all duration-200 inline-flex items-center justify-center gap-2;
+    min-height: 44px;
+  }
+
+  .btn-primary {
+    @apply bg-[#165DFF] text-white hover:bg-[#4080FF] hover:shadow-lg hover:-translate-y-0.5 active:translate-y-0;
+  }
+
+  .btn-accent {
+    @apply bg-[#FF7D00] text-white hover:bg-[#FF9A2E] hover:shadow-lg hover:-translate-y-0.5 active:translate-y-0;
+  }
+
+  .btn-success {
+    @apply bg-[#00B42A] text-white hover:bg-[#0FC6C2] hover:shadow-lg;
+  }
+
+  .btn-danger {
+    @apply bg-[#F53F3F] text-white hover:bg-[#FF5252] hover:shadow-lg;
+  }
+
+  .btn-secondary {
+    @apply bg-white text-[#4E5969] border border-[#E5E6EB] hover:bg-[#F7F8FA] hover:border-[#165DFF] hover:text-[#165DFF];
+  }
+
+  .btn-status {
+    @apply px-3 py-1.5 rounded-md text-sm font-medium transition-all duration-200;
+  }
+
+  .card {
+    @apply bg-white rounded-xl shadow-sm border border-[#E5E6EB] overflow-hidden;
+  }
+
+  .card-hover {
+    @apply hover:shadow-md hover:-translate-y-0.5 transition-all duration-200;
+  }
+
+  .input {
+    @apply w-full px-4 py-3 border border-[#E5E6EB] rounded-lg focus:outline-none focus:border-[#165DFF] focus:ring-2 focus:ring-[#165DFF]/20 transition-all duration-200;
+  }
+
+  .label {
+    @apply block text-sm font-medium text-[#4E5969] mb-1.5;
+  }
+
+  .status-badge {
+    @apply inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium;
+  }
+
+  .animate-fade-in {
+    animation: fadeIn 0.3s ease-out forwards;
+  }
+
+  .animate-stagger-1 { animation-delay: 50ms; }
+  .animate-stagger-2 { animation-delay: 100ms; }
+  .animate-stagger-3 { animation-delay: 150ms; }
+  .animate-stagger-4 { animation-delay: 200ms; }
+  .animate-stagger-5 { animation-delay: 250ms; }
+
+  @keyframes fadeIn {
+    from {
+      opacity: 0;
+      transform: translateY(10px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  @keyframes pulse-soft {
+    0%, 100% {
+      opacity: 1;
+    }
+    50% {
+      opacity: 0.7;
+    }
+  }
+
+  .animate-pulse-soft {
+    animation: pulse-soft 2s ease-in-out infinite;
+  }
+
+  @keyframes breathe {
+    0%, 100% {
+      box-shadow: 0 0 0 0 rgba(22, 93, 255, 0.4);
+    }
+    50% {
+      box-shadow: 0 0 0 8px rgba(22, 93, 255, 0);
+    }
+  }
+
+  .input-focus-breathe:focus {
+    animation: breathe 2s ease-in-out infinite;
+  }
+}
+
+@media print {
+  @page {
+    size: 80mm auto;
+    margin: 0;
+  }
+
+  body * {
+    visibility: hidden;
+  }
+
+  .print-receipt,
+  .print-receipt * {
+    visibility: visible;
+  }
+
+  .print-receipt {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 80mm;
+    padding: 5mm;
+    font-family: 'Noto Sans SC', sans-serif;
+    font-size: 12px;
+    line-height: 1.4;
+  }
+
+  .no-print {
+    display: none !important;
+  }
+}
+
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--gray-50);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--gray-200);
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--gray-300);
+}
