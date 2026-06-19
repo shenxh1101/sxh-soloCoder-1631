@@ -1,7 +1,7 @@
 import { Request, Response } from 'express';
 import * as clothingRepo from '../repositories/clothing';
 import * as customerRepo from '../repositories/customer';
-import { CreateClothingRequest, ClothingStatus, BatchUpdateStatusRequest, ClothingSearchParams, PaymentMethod, ClothingType } from '../../shared/types';
+import { CreateClothingRequest, ClothingStatus, BatchUpdateStatusRequest, ClothingSearchParams, PaymentMethod, ClothingType, UpdateClothingRequest, PickupRequest } from '../../shared/types';
 
 export async function createClothing(req: Request, res: Response) {
   try {
@@ -126,11 +126,40 @@ export async function batchUpdateStatus(req: Request, res: Response) {
   }
 }
 
+export async function updateClothing(req: Request, res: Response) {
+  try {
+    const { id } = req.params;
+    const data: UpdateClothingRequest = req.body;
+
+    if (data.price !== undefined && data.price < 0) {
+      return res.status(400).json({ error: '价格不能为负数' });
+    }
+
+    const clothing = clothingRepo.updateClothing(parseInt(id), data);
+    if (!clothing) {
+      return res.status(404).json({ error: '未找到该衣物记录' });
+    }
+    res.json(clothing);
+  } catch (error) {
+    console.error('更新衣物信息失败:', error);
+    res.status(500).json({ error: '更新失败' });
+  }
+}
+
 export async function pickupClothing(req: Request, res: Response) {
   try {
     const { id } = req.params;
-    const { paymentMethod = 'cash' } = req.body;
-    const clothing = clothingRepo.pickupClothing(parseInt(id), paymentMethod as PaymentMethod);
+    const { paymentMethod, paymentDetails }: PickupRequest = req.body;
+
+    if (!paymentMethod) {
+      return res.status(400).json({ error: '请选择支付方式' });
+    }
+
+    if (paymentMethod === 'mixed' && (!paymentDetails || paymentDetails.length === 0)) {
+      return res.status(400).json({ error: '混合支付请填写明细' });
+    }
+
+    const clothing = clothingRepo.pickupClothing(parseInt(id), paymentMethod as PaymentMethod, paymentDetails);
     if (!clothing) {
       return res.status(404).json({ error: '未找到该衣物记录' });
     }
@@ -138,6 +167,16 @@ export async function pickupClothing(req: Request, res: Response) {
   } catch (error) {
     console.error('确认取衣失败:', error);
     res.status(500).json({ error: '操作失败' });
+  }
+}
+
+export async function getDashboardStats(req: Request, res: Response) {
+  try {
+    const stats = clothingRepo.getDashboardStats();
+    res.json(stats);
+  } catch (error) {
+    console.error('获取看板统计失败:', error);
+    res.status(500).json({ error: '获取失败' });
   }
 }
 

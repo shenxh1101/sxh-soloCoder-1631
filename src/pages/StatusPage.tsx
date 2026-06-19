@@ -1,16 +1,17 @@
 import { useState, useEffect, useMemo } from 'react';
-import { RefreshCw, Phone, Clock, AlertTriangle, ArrowRight, Search, Filter, CheckSquare, Square, Printer, X, ChevronDown } from 'lucide-react';
-import { Clothing, ClothingStatus, CLOTHING_STATUS_LABELS, STATUS_FLOW, STATUS_COLORS, CLOTHING_TYPE_LABELS, ClothingType } from '../../shared/types';
+import { RefreshCw, Phone, Clock, AlertTriangle, ArrowRight, Search, Filter, CheckSquare, Square, Printer, X, ChevronDown, Package, AlertCircle, ClipboardCheck, PackageCheck } from 'lucide-react';
+import { Clothing, ClothingStatus, CLOTHING_STATUS_LABELS, STATUS_FLOW, STATUS_COLORS, CLOTHING_TYPE_LABELS, ClothingType, DashboardStats } from '../../shared/types';
 import { clothingApi } from '../utils/api';
 import { useStore } from '../store/useStore';
 import StatusBadge from '../components/StatusBadge';
 import Barcode from '../components/Barcode';
 import Receipt from '../components/Receipt';
 import { isOverdue } from '../../shared/utils';
-import { useSearchParams } from 'react-router-dom';
+import { useSearchParams, useNavigate } from 'react-router-dom';
 
 export default function StatusPage() {
   const [searchParams, setSearchParams] = useSearchParams();
+  const navigate = useNavigate();
   const { clothingList, setClothingList, overdueList, setOverdueList, loading, setLoading } = useStore();
   const [activeTab, setActiveTab] = useState<ClothingStatus | 'all'>('all');
   const [updatingIds, setUpdatingIds] = useState<Set<number>>(new Set());
@@ -22,6 +23,7 @@ export default function StatusPage() {
   const [endDate, setEndDate] = useState('');
   const [printClothing, setPrintClothing] = useState<Clothing | null>(null);
   const [showPrintModal, setShowPrintModal] = useState(false);
+  const [dashboardStats, setDashboardStats] = useState<DashboardStats | null>(null);
 
   const loadData = async () => {
     setLoading(true);
@@ -39,12 +41,14 @@ export default function StatusPage() {
       if (startDate) params.startDate = startDate;
       if (endDate) params.endDate = endDate;
 
-      const [listResult, overdueResult] = await Promise.all([
+      const [listResult, overdueResult, dashboardResult] = await Promise.all([
         Object.keys(params).length > 0 ? clothingApi.search(params) : clothingApi.list(activeTab === 'all' ? undefined : activeTab),
         clothingApi.getOverdue(),
+        clothingApi.getDashboardStats(),
       ]);
       setClothingList(listResult.list);
       setOverdueList(overdueResult);
+      setDashboardStats(dashboardResult);
     } catch (error) {
       console.error('加载数据失败:', error);
     } finally {
@@ -153,6 +157,35 @@ export default function StatusPage() {
     }
   };
 
+  const handleDashboardClick = (type: 'todayReceived' | 'overdue' | 'pendingInspection' | 'waitingPickup') => {
+    setSearchKeyword('');
+    setFilterType('');
+    setStartDate('');
+    setEndDate('');
+    
+    switch (type) {
+      case 'todayReceived':
+        const today = new Date().toISOString().split('T')[0];
+        setStartDate(today);
+        setEndDate(today);
+        setActiveTab('received');
+        break;
+      case 'overdue':
+        setActiveTab('all');
+        setTimeout(() => {
+          const overdueSection = document.getElementById('overdue-section');
+          overdueSection?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }, 100);
+        break;
+      case 'pendingInspection':
+        setActiveTab('inspecting');
+        break;
+      case 'waitingPickup':
+        setActiveTab('waiting');
+        break;
+    }
+  };
+
   const statusTabs: (ClothingStatus | 'all')[] = ['all', 'received', 'washing', 'ironing', 'inspecting', 'waiting'];
 
   const getNextStatusLabel = (status: ClothingStatus) => {
@@ -196,8 +229,76 @@ export default function StatusPage() {
         </div>
       </div>
 
+      {dashboardStats && (
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+          <div
+            className="card p-5 cursor-pointer hover:shadow-lg transition-all group animate-fade-in animate-stagger-1"
+            onClick={() => handleDashboardClick('todayReceived')}
+          >
+            <div className="flex items-start justify-between">
+              <div>
+                <p className="text-sm text-gray-400 mb-1">今日新收</p>
+                <p className="text-3xl font-bold text-blue-600">{dashboardStats.todayReceived}</p>
+                <p className="text-xs text-gray-400 mt-2 group-hover:text-blue-500 transition-colors">点击查看 →</p>
+              </div>
+              <div className="w-12 h-12 bg-blue-100 rounded-xl flex items-center justify-center">
+                <Package className="w-6 h-6 text-blue-600" />
+              </div>
+            </div>
+          </div>
+
+          <div
+            className="card p-5 cursor-pointer hover:shadow-lg transition-all group animate-fade-in animate-stagger-1"
+            onClick={() => handleDashboardClick('overdue')}
+          >
+            <div className="flex items-start justify-between">
+              <div>
+                <p className="text-sm text-gray-400 mb-1">逾期未取</p>
+                <p className="text-3xl font-bold text-red-600">{dashboardStats.overdueCount}</p>
+                <p className="text-xs text-gray-400 mt-2 group-hover:text-red-500 transition-colors">点击查看 →</p>
+              </div>
+              <div className="w-12 h-12 bg-red-100 rounded-xl flex items-center justify-center">
+                <AlertCircle className="w-6 h-6 text-red-600" />
+              </div>
+            </div>
+          </div>
+
+          <div
+            className="card p-5 cursor-pointer hover:shadow-lg transition-all group animate-fade-in animate-stagger-2"
+            onClick={() => handleDashboardClick('pendingInspection')}
+          >
+            <div className="flex items-start justify-between">
+              <div>
+                <p className="text-sm text-gray-400 mb-1">待质检</p>
+                <p className="text-3xl font-bold text-cyan-600">{dashboardStats.pendingInspection}</p>
+                <p className="text-xs text-gray-400 mt-2 group-hover:text-cyan-500 transition-colors">点击查看 →</p>
+              </div>
+              <div className="w-12 h-12 bg-cyan-100 rounded-xl flex items-center justify-center">
+                <ClipboardCheck className="w-6 h-6 text-cyan-600" />
+              </div>
+            </div>
+          </div>
+
+          <div
+            className="card p-5 cursor-pointer hover:shadow-lg transition-all group animate-fade-in animate-stagger-2"
+            onClick={() => handleDashboardClick('waitingPickup')}
+          >
+            <div className="flex items-start justify-between">
+              <div>
+                <p className="text-sm text-gray-400 mb-1">待取衣</p>
+                <p className="text-3xl font-bold text-green-600">{dashboardStats.waitingPickup}</p>
+                <p className="text-xs text-gray-400 mt-2 group-hover:text-green-500 transition-colors">点击查看 →</p>
+              </div>
+              <div className="w-12 h-12 bg-green-100 rounded-xl flex items-center justify-center">
+                <PackageCheck className="w-6 h-6 text-green-600" />
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {overdueList.length > 0 && (
-        <div className="card p-4 mb-6 bg-danger/5 border-danger/30 animate-fade-in animate-stagger-1">
+        <div id="overdue-section" className="card p-4 mb-6 bg-danger/5 border-danger/30 animate-fade-in animate-stagger-1">
           <div className="flex items-center gap-3 mb-3">
             <div className="w-10 h-10 bg-danger/10 rounded-full flex items-center justify-center animate-pulse-soft">
               <AlertTriangle className="w-5 h-5 text-danger" />
@@ -431,7 +532,15 @@ export default function StatusPage() {
                     </div>
                     <div>
                       <p className="font-semibold text-gray-600">{CLOTHING_TYPE_LABELS[clothing.clothingType]}</p>
-                      <p className="text-sm text-gray-400 font-mono">{clothing.barcode}</p>
+                      <p
+                        className="text-sm text-gray-400 font-mono cursor-pointer hover:text-primary-500 transition-colors"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          navigate(`/order/${clothing.id}`);
+                        }}
+                      >
+                        {clothing.barcode} →
+                      </p>
                     </div>
                   </div>
                   <StatusBadge status={clothing.status} />

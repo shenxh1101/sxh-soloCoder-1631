@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
-import { Search, Check, Phone, Clock, AlertCircle, ScanLine, Wallet } from 'lucide-react';
-import { Clothing, CLOTHING_TYPE_LABELS, STATUS_COLORS, PaymentMethod, PAYMENT_METHOD_LABELS, PAYMENT_METHOD_COLORS } from '../../shared/types';
+import { useNavigate } from 'react-router-dom';
+import { Search, Check, Phone, Clock, AlertCircle, ScanLine, Wallet, Plus, Trash2 } from 'lucide-react';
+import { Clothing, CLOTHING_TYPE_LABELS, STATUS_COLORS, PaymentMethod, PAYMENT_METHOD_LABELS, PAYMENT_METHOD_COLORS, PaymentDetail, PickupRequest } from '../../shared/types';
 import { clothingApi } from '../utils/api';
 import { useStore } from '../store/useStore';
 import StatusBadge from '../components/StatusBadge';
@@ -8,6 +9,7 @@ import Barcode from '../components/Barcode';
 import { isOverdue } from '../../shared/utils';
 
 export default function PickupPage() {
+  const navigate = useNavigate();
   const { updateClothingInList } = useStore();
   const [barcode, setBarcode] = useState('');
   const [clothing, setClothing] = useState<Clothing | null>(null);
@@ -15,6 +17,7 @@ export default function PickupPage() {
   const [pickingUp, setPickingUp] = useState(false);
   const [notFound, setNotFound] = useState(false);
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('cash');
+  const [paymentDetails, setPaymentDetails] = useState<PaymentDetail[]>([{ method: 'cash', amount: 0 }]);
   const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -51,13 +54,25 @@ export default function PickupPage() {
   const handlePickup = async () => {
     if (!clothing || clothing.status === 'completed') return;
 
+    let pickupData: PickupRequest;
+    if (paymentMethod === 'mixed') {
+      const total = paymentDetails.reduce((sum, d) => sum + d.amount, 0);
+      if (Math.abs(total - clothing.price) > 0.01) {
+        alert(`支付明细总额（¥${total.toFixed(2)}）与应付金额（¥${clothing.price.toFixed(2)}）不一致`);
+        return;
+      }
+      pickupData = { paymentMethod, paymentDetails };
+    } else {
+      pickupData = { paymentMethod };
+    }
+
     if (!confirm(`确认取衣？\n衣物：${CLOTHING_TYPE_LABELS[clothing.clothingType]}\n金额：¥${clothing.price.toFixed(2)}\n支付方式：${PAYMENT_METHOD_LABELS[paymentMethod]}`)) {
       return;
     }
 
     setPickingUp(true);
     try {
-      const updated = await clothingApi.pickup(clothing.id, paymentMethod);
+      const updated = await clothingApi.pickup(clothing.id, pickupData);
       setClothing(updated);
       updateClothingInList(updated);
       alert('取衣成功！');
@@ -77,10 +92,33 @@ export default function PickupPage() {
     setClothing(null);
     setNotFound(false);
     setPaymentMethod('cash');
+    setPaymentDetails([{ method: 'cash', amount: 0 }]);
     inputRef.current?.focus();
   };
 
-  const paymentMethods: PaymentMethod[] = ['cash', 'wechat', 'alipay'];
+  const handlePaymentMethodChange = (method: PaymentMethod) => {
+    setPaymentMethod(method);
+    if (method === 'mixed') {
+      setPaymentDetails([{ method: 'cash', amount: clothing ? clothing.price / 2 : 0 }, { method: 'wechat', amount: clothing ? clothing.price / 2 : 0 }]);
+    }
+  };
+
+  const handlePaymentDetailChange = (index: number, field: 'method' | 'amount', value: any) => {
+    const updated = [...paymentDetails];
+    updated[index] = { ...updated[index], [field]: value };
+    setPaymentDetails(updated);
+  };
+
+  const addPaymentDetail = () => {
+    setPaymentDetails([...paymentDetails, { method: 'cash', amount: 0 }]);
+  };
+
+  const removePaymentDetail = (index: number) => {
+    if (paymentDetails.length <= 1) return;
+    setPaymentDetails(paymentDetails.filter((_, i) => i !== index));
+  };
+
+  const simplePaymentMethods: PaymentMethod[] = ['cash', 'wechat', 'alipay', 'mixed'];
 
   return (
     <div className="animate-fade-in">
@@ -152,7 +190,12 @@ export default function PickupPage() {
                   <h3 className="text-xl font-bold text-gray-600 mb-1">
                     {CLOTHING_TYPE_LABELS[clothing.clothingType]}
                   </h3>
-                  <p className="text-sm text-gray-400 font-mono">{clothing.barcode}</p>
+                  <p
+                    className="text-sm text-gray-400 font-mono cursor-pointer hover:text-primary-500 transition-colors"
+                    onClick={() => navigate(`/order/${clothing.id}`)}
+                  >
+                    {clothing.barcode} →
+                  </p>
                 </div>
                 <StatusBadge status={clothing.status} size="md" />
               </div>
@@ -257,11 +300,11 @@ export default function PickupPage() {
                     <Wallet className="w-4 h-4" />
                     选择支付方式
                   </p>
-                  <div className="grid grid-cols-3 gap-3">
-                    {paymentMethods.map((method) => (
+                  <div className="grid grid-cols-4 gap-3 mb-4">
+                    {simplePaymentMethods.map((method) => (
                       <button
                         key={method}
-                        onClick={() => setPaymentMethod(method)}
+                        onClick={() => handlePaymentMethodChange(method)}
                         className={`p-4 rounded-xl border-2 transition-all ${
                           paymentMethod === method
                             ? 'border-primary-500 bg-primary-50'
@@ -276,6 +319,7 @@ export default function PickupPage() {
                             {method === 'cash' && '💵'}
                             {method === 'wechat' && '💚'}
                             {method === 'alipay' && '💙'}
+                            {method === 'mixed' && '💳'}
                           </span>
                         </div>
                         <p
@@ -287,6 +331,64 @@ export default function PickupPage() {
                       </button>
                     ))}
                   </div>
+                  {paymentMethod === 'mixed' && (
+                    <div className="p-4 bg-gray-50 rounded-xl space-y-3">
+                      {paymentDetails.map((detail, index) => (
+                        <div key={index} className="flex items-center gap-3">
+                          <select
+                            value={detail.method}
+                            onChange={(e) => handlePaymentDetailChange(index, 'method', e.target.value)}
+                            className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white"
+                          >
+                            <option value="cash">现金</option>
+                            <option value="wechat">微信支付</option>
+                            <option value="alipay">支付宝</option>
+                          </select>
+                          <div className="flex-1 relative">
+                            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500">¥</span>
+                            <input
+                              type="number"
+                              value={detail.amount}
+                              onChange={(e) => handlePaymentDetailChange(index, 'amount', parseFloat(e.target.value) || 0)}
+                              placeholder="0.00"
+                              step="0.01"
+                              className="w-full pl-8 pr-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                            />
+                          </div>
+                          <button
+                            onClick={() => removePaymentDetail(index)}
+                            disabled={paymentDetails.length <= 1}
+                            className="p-2 text-gray-400 hover:text-red-500 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                          >
+                            <Trash2 className="w-5 h-5" />
+                          </button>
+                        </div>
+                      ))}
+                      <button
+                        onClick={addPaymentDetail}
+                        className="w-full py-2 text-sm text-blue-600 hover:bg-blue-50 rounded-lg flex items-center justify-center gap-1 transition-colors"
+                      >
+                        <Plus className="w-4 h-4" />
+                        添加支付方式
+                      </button>
+                      <div className="flex justify-between pt-2 border-t border-gray-200 text-sm">
+                        <span className="text-gray-500">应付金额</span>
+                        <span className="font-medium">¥{clothing.price.toFixed(2)}</span>
+                      </div>
+                      <div className="flex justify-between text-sm">
+                        <span className="text-gray-500">已填金额</span>
+                        <span
+                          className={`font-medium ${
+                            Math.abs(paymentDetails.reduce((s, d) => s + d.amount, 0) - clothing.price) <= 0.01
+                              ? 'text-green-600'
+                              : 'text-red-600'
+                          }`}
+                        >
+                          ¥{paymentDetails.reduce((s, d) => s + d.amount, 0).toFixed(2)}
+                        </span>
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
 

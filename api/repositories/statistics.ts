@@ -1,5 +1,5 @@
 import db from '../db/init';
-import { ClothingType, CLOTHING_TYPE_LABELS, MonthlyStats, PAYMENT_METHOD_LABELS, PaymentMethod } from '../../shared/types';
+import { ClothingType, CLOTHING_TYPE_LABELS, MonthlyStats, PAYMENT_METHOD_LABELS, PaymentMethod, PaymentDetail } from '../../shared/types';
 import { formatDate } from '../utils/barcode';
 
 export function getMonthlyStats(year?: number, month?: number): MonthlyStats {
@@ -103,30 +103,59 @@ export function getMonthlyStats(year?: number, month?: number): MonthlyStats {
       revenue: data.revenue,
     }));
 
-  const paymentStmt = db.prepare(`
+  const paymentDataStmt = db.prepare(`
     SELECT 
       payment_method as method,
-      COUNT(*) as count,
-      COALESCE(SUM(price), 0) as amount
+      payment_details,
+      price
     FROM clothing
     WHERE actual_pickup_date BETWEEN ? AND ?
     AND status = 'completed'
     AND payment_method != 'none'
-    GROUP BY payment_method
-    ORDER BY amount DESC
   `);
-  const paymentRows = paymentStmt.all(startDate, endDateStr) as {
+  const paymentRows = paymentDataStmt.all(startDate, endDateStr) as {
     method: PaymentMethod;
-    count: number;
-    amount: number;
+    payment_details?: string;
+    price: number;
   }[];
 
-  const paymentStats = paymentRows.map(row => ({
-    method: row.method,
-    methodName: PAYMENT_METHOD_LABELS[row.method],
-    count: row.count,
-    amount: row.amount,
-  }));
+  const paymentMap = new Map<PaymentMethod, { count: number; amount: number }>();
+  
+  for (const row of paymentRows) {
+    if (row.method === 'mixed' && row.payment_details) {
+      try {
+        const details: PaymentDetail[] = JSON.parse(row.payment_details);
+        for (const detail of details) {
+          const existing = paymentMap.get(detail.method) || { count: 0, amount: 0 };
+          paymentMap.set(detail.method, {
+            count: existing.count + 1,
+            amount: existing.amount + detail.amount,
+          });
+        }
+      } catch (e) {
+        const existing = paymentMap.get(row.method) || { count: 0, amount: 0 };
+        paymentMap.set(row.method, {
+          count: existing.count + 1,
+          amount: existing.amount + row.price,
+        });
+      }
+    } else {
+      const existing = paymentMap.get(row.method) || { count: 0, amount: 0 };
+      paymentMap.set(row.method, {
+        count: existing.count + 1,
+        amount: existing.amount + row.price,
+      });
+    }
+  }
+
+  const paymentStats = Array.from(paymentMap.entries())
+    .sort((a, b) => b[1].amount - a[1].amount)
+    .map(([method, data]) => ({
+      method,
+      methodName: PAYMENT_METHOD_LABELS[method],
+      count: data.count,
+      amount: data.amount,
+    }));
 
   const today = formatDate(new Date());
   const overdueStmt = db.prepare(`

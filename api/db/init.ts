@@ -31,6 +31,7 @@ CREATE TABLE IF NOT EXISTS clothing (
     status VARCHAR(20) NOT NULL DEFAULT 'received',
     remark TEXT,
     payment_method VARCHAR(20) DEFAULT 'none',
+    payment_details TEXT,
     status_history TEXT NOT NULL,
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
@@ -85,6 +86,15 @@ try {
 }
 
 try {
+  const upgradeSQL2 = `
+    ALTER TABLE clothing ADD COLUMN payment_details TEXT;
+  `;
+  db.exec(upgradeSQL2);
+} catch (e) {
+  // 列可能已存在，忽略错误
+}
+
+try {
   const customerTableSQL = `
     CREATE TABLE IF NOT EXISTS customer (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -105,6 +115,7 @@ try {
     CREATE INDEX IF NOT EXISTS idx_customer_phone ON customer(phone);
     CREATE INDEX IF NOT EXISTS idx_customer_name ON customer(name);
     CREATE INDEX IF NOT EXISTS idx_clothing_payment ON clothing(payment_method);
+    CREATE INDEX IF NOT EXISTS idx_clothing_expected_date ON clothing(expected_pickup_date);
   `;
   db.exec(indexSQL);
 } catch (e) {

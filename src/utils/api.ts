@@ -1,5 +1,5 @@
 import axios from 'axios';
-import { Clothing, ClothingStatus, CreateClothingRequest, MonthlyStats, Customer, CustomerDetail, ClothingSearchParams, PaymentMethod, BatchUpdateStatusRequest } from '../../shared/types';
+import { Clothing, ClothingStatus, CreateClothingRequest, MonthlyStats, Customer, CustomerDetail, ClothingSearchParams, PaymentMethod, BatchUpdateStatusRequest, UpdateClothingRequest, PickupRequest, DashboardStats } from '../../shared/types';
 
 const api = axios.create({
   baseURL: '/api',
@@ -26,6 +26,9 @@ export const clothingApi = {
   getByBarcode: (barcode: string) =>
     api.get<Clothing>(`/clothing/barcode/${barcode}`).then(res => res.data),
 
+  update: (id: number, data: UpdateClothingRequest) =>
+    api.put<Clothing>(`/clothing/${id}`, data).then(res => res.data),
+
   updateStatus: (id: number, status: ClothingStatus) =>
     api.put<Clothing>(`/clothing/${id}/status`, { status }).then(res => res.data),
 
@@ -35,8 +38,11 @@ export const clothingApi = {
       status,
     } as BatchUpdateStatusRequest).then(res => res.data),
 
-  pickup: (id: number, paymentMethod: PaymentMethod = 'cash') =>
-    api.put<Clothing>(`/clothing/${id}/pickup`, { paymentMethod }).then(res => res.data),
+  pickup: (id: number, data: PickupRequest) =>
+    api.put<Clothing>(`/clothing/${id}/pickup`, data).then(res => res.data),
+
+  getDashboardStats: () =>
+    api.get<DashboardStats>('/clothing/dashboard').then(res => res.data),
 
   getOverdue: () =>
     api.get<Clothing[]>('/clothing/overdue').then(res => res.data),

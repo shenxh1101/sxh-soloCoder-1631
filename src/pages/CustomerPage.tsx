@@ -285,8 +285,11 @@ export default function CustomerPage() {
                             <div className="font-medium text-gray-600">
                               {CLOTHING_TYPE_LABELS[item.clothingType]}
                             </div>
-                            <div className="text-sm text-gray-400">
-                              {item.barcode} · {item.receiveDate}
+                            <div
+                              className="text-sm text-gray-400 cursor-pointer hover:text-primary-500 transition-colors"
+                              onClick={() => navigate(`/order/${item.id}`)}
+                            >
+                              {item.barcode} → · {item.receiveDate}
                             </div>
                           </div>
                         </div>

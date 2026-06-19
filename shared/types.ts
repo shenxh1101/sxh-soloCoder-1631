@@ -2,12 +2,18 @@ export type ClothingStatus = 'received' | 'washing' | 'ironing' | 'inspecting' |
 
 export type ClothingType = 'suit' | 'coat' | 'downjacket' | 'dress' | 'shirt';
 
-export type PaymentMethod = 'cash' | 'wechat' | 'alipay' | 'none';
+export type PaymentMethod = 'cash' | 'wechat' | 'alipay' | 'none' | 'mixed';
+
+export interface PaymentDetail {
+  method: Exclude<PaymentMethod, 'none' | 'mixed'>;
+  amount: number;
+}
 
 export interface StatusRecord {
   status: ClothingStatus;
   timestamp: string;
   operator?: string;
+  remark?: string;
 }
 
 export interface Clothing {
@@ -23,9 +29,16 @@ export interface Clothing {
   status: ClothingStatus;
   remark?: string;
   paymentMethod?: PaymentMethod;
+  paymentDetails?: PaymentDetail[];
   statusHistory: StatusRecord[];
   createdAt: string;
   updatedAt: string;
+}
+
+export interface UpdateClothingRequest {
+  expectedPickupDate?: string;
+  remark?: string;
+  price?: number;
 }
 
 export interface Customer {
@@ -52,6 +65,13 @@ export interface ClothingTypeConfig {
   defaultPrice: number;
 }
 
+export interface DashboardStats {
+  todayReceived: number;
+  overdueCount: number;
+  pendingInspection: number;
+  waitingPickup: number;
+}
+
 export interface MonthlyStats {
   totalCount: number;
   totalRevenue: number;
@@ -71,7 +91,8 @@ export interface CreateClothingRequest {
 }
 
 export interface PickupRequest {
-  paymentMethod?: PaymentMethod;
+  paymentMethod: PaymentMethod;
+  paymentDetails?: PaymentDetail[];
 }
 
 export interface BatchUpdateStatusRequest {
@@ -138,6 +159,7 @@ export const PAYMENT_METHOD_LABELS: Record<PaymentMethod, string> = {
   wechat: '微信支付',
   alipay: '支付宝',
   none: '未支付',
+  mixed: '混合支付',
 };
 
 export const PAYMENT_METHOD_COLORS: Record<PaymentMethod, string> = {
@@ -145,4 +167,5 @@ export const PAYMENT_METHOD_COLORS: Record<PaymentMethod, string> = {
   wechat: '#07C160',
   alipay: '#1677FF',
   none: '#86909C',
+  mixed: '#F53F3F',
 };

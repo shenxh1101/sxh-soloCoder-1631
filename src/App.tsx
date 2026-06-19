@@ -5,6 +5,7 @@ import StatusPage from "@/pages/StatusPage";
 import PickupPage from "@/pages/PickupPage";
 import CustomerPage from "@/pages/CustomerPage";
 import StatisticsPage from "@/pages/StatisticsPage";
+import OrderDetailPage from "@/pages/OrderDetailPage";
 
 export default function App() {
   return (
@@ -16,6 +17,7 @@ export default function App() {
           <Route path="/pickup" element={<PickupPage />} />
           <Route path="/customer" element={<CustomerPage />} />
           <Route path="/statistics" element={<StatisticsPage />} />
+          <Route path="/order/:id" element={<OrderDetailPage />} />
         </Routes>
       </Layout>
     </Router>

@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
-import { Plus, Printer, Phone, Calendar, Tag, FileText, Sparkles, User, Info } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import { Plus, Printer, Phone, Calendar, Tag, FileText, Sparkles, User, Info, ArrowRight } from 'lucide-react';
 import { ClothingType, Clothing, DEFAULT_PRICES, CLOTHING_TYPE_LABELS, CreateClothingRequest, Customer } from '../../shared/types';
 import { clothingApi, customerApi } from '../utils/api';
 import { useStore } from '../store/useStore';
@@ -7,6 +8,7 @@ import StatusBadge from '../components/StatusBadge';
 import Receipt from '../components/Receipt';
 
 export default function Home() {
+  const navigate = useNavigate();
   const { addClothingToList } = useStore();
   const [formData, setFormData] = useState<CreateClothingRequest>({
     clothingType: 'suit',
@@ -287,6 +289,13 @@ export default function Home() {
                   <button onClick={handlePrint} className="btn btn-accent flex-1">
                     <Printer className="w-4 h-4" />
                     打印取衣单
+                  </button>
+                  <button
+                    onClick={() => createdClothing && navigate(`/order/${createdClothing.id}`)}
+                    className="btn btn-secondary flex-1"
+                  >
+                    <ArrowRight className="w-4 h-4" />
+                    查看详情
                   </button>
                   <button onClick={handleNew} className="btn btn-secondary flex-1">
                     <Plus className="w-4 h-4" />
