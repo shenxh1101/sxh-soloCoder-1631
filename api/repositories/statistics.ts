@@ -12,14 +12,22 @@ export function getMonthlyStats(year?: number, month?: number): MonthlyStats {
   const endDateStr = `${targetYear}-${targetMonth.toString().padStart(2, '0')}-${endDate.getDate()}`;
 
   const countStmt = db.prepare(`
-    SELECT 
-      COUNT(*) as totalCount,
-      COALESCE(SUM(CASE WHEN status = 'completed' AND payment_method != 'none' THEN price ELSE 0 END), 0) as totalRevenue
+    SELECT COUNT(*) as totalCount
     FROM clothing
     WHERE receive_date BETWEEN ? AND ?
   `);
-  const { totalCount, totalRevenue } = countStmt.get(startDate, endDateStr) as {
+  const { totalCount } = countStmt.get(startDate, endDateStr) as {
     totalCount: number;
+  };
+
+  const revenueStmt = db.prepare(`
+    SELECT COALESCE(SUM(price), 0) as totalRevenue
+    FROM clothing
+    WHERE actual_pickup_date BETWEEN ? AND ?
+    AND status = 'completed'
+    AND payment_method != 'none'
+  `);
+  const { totalRevenue } = revenueStmt.get(startDate, endDateStr) as {
     totalRevenue: number;
   };
 
@@ -47,7 +55,7 @@ export function getMonthlyStats(year?: number, month?: number): MonthlyStats {
     SELECT 
       receive_date as date,
       COUNT(*) as count,
-      COALESCE(SUM(CASE WHEN status = 'completed' AND payment_method != 'none' THEN price ELSE 0 END), 0) as revenue
+      0 as revenue
     FROM clothing
     WHERE receive_date BETWEEN ? AND ?
     GROUP BY receive_date
@@ -59,13 +67,49 @@ export function getMonthlyStats(year?: number, month?: number): MonthlyStats {
     revenue: number;
   }[];
 
+  const revenueByDateMap = new Map<string, number>();
+  const revenueByDateStmt = db.prepare(`
+    SELECT actual_pickup_date as date, COALESCE(SUM(price), 0) as revenue
+    FROM clothing
+    WHERE actual_pickup_date BETWEEN ? AND ?
+    AND status = 'completed'
+    AND payment_method != 'none'
+    GROUP BY actual_pickup_date
+  `);
+  const revenueByDateRows = revenueByDateStmt.all(startDate, endDateStr) as { date: string; revenue: number }[];
+  for (const row of revenueByDateRows) {
+    revenueByDateMap.set(row.date, row.revenue);
+  }
+
+  const allDates = new Set<string>();
+  for (const row of dailyRows) allDates.add(row.date);
+  for (const row of revenueByDateRows) allDates.add(row.date);
+
+  const dailyMap = new Map<string, { count: number; revenue: number }>();
+  for (const row of dailyRows) {
+    dailyMap.set(row.date, { count: row.count, revenue: revenueByDateMap.get(row.date) || 0 });
+  }
+  for (const row of revenueByDateRows) {
+    if (!dailyMap.has(row.date)) {
+      dailyMap.set(row.date, { count: 0, revenue: row.revenue });
+    }
+  }
+
+  const dailyStats = Array.from(dailyMap.entries())
+    .sort((a, b) => a[0].localeCompare(b[0]))
+    .map(([date, data]) => ({
+      date,
+      count: data.count,
+      revenue: data.revenue,
+    }));
+
   const paymentStmt = db.prepare(`
     SELECT 
       payment_method as method,
       COUNT(*) as count,
       COALESCE(SUM(price), 0) as amount
     FROM clothing
-    WHERE receive_date BETWEEN ? AND ?
+    WHERE actual_pickup_date BETWEEN ? AND ?
     AND status = 'completed'
     AND payment_method != 'none'
     GROUP BY payment_method
@@ -97,7 +141,7 @@ export function getMonthlyStats(year?: number, month?: number): MonthlyStats {
     totalCount,
     totalRevenue,
     typeStats,
-    dailyStats: dailyRows,
+    dailyStats,
     paymentStats,
     overdueCount,
   };

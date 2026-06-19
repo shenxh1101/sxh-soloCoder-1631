@@ -213,7 +213,7 @@ export default function CustomerPage() {
                   )}
                 </div>
 
-                {selectedCustomer.remark && (
+                {(selectedCustomer.remark || editingRemark) && (
                   <div className="mt-4 p-3 bg-white/10 rounded-lg backdrop-blur">
                     <p className="text-sm text-white/90">
                       <span className="font-medium">备注：</span>

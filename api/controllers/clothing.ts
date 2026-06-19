@@ -1,6 +1,7 @@
 import { Request, Response } from 'express';
 import * as clothingRepo from '../repositories/clothing';
-import { CreateClothingRequest, ClothingStatus, BatchUpdateStatusRequest, ClothingSearchParams, PaymentMethod } from '../../shared/types';
+import * as customerRepo from '../repositories/customer';
+import { CreateClothingRequest, ClothingStatus, BatchUpdateStatusRequest, ClothingSearchParams, PaymentMethod, ClothingType } from '../../shared/types';
 
 export async function createClothing(req: Request, res: Response) {
   try {
@@ -8,6 +9,14 @@ export async function createClothing(req: Request, res: Response) {
 
     if (!data.clothingType || !data.customerPhone || !data.price || !data.expectedPickupDate) {
       return res.status(400).json({ error: '缺少必要字段' });
+    }
+
+    if (data.customerName) {
+      try {
+        customerRepo.updateCustomerInfo(data.customerPhone, { name: data.customerName });
+      } catch (e) {
+        console.error('保存客户姓名失败', e);
+      }
     }
 
     const clothing = clothingRepo.createClothing(data);
@@ -37,7 +46,7 @@ export async function searchClothing(req: Request, res: Response) {
   try {
     const params: ClothingSearchParams = {
       status: req.query.status as ClothingStatus | undefined,
-      clothingType: req.query.clothingType as ClothingStatus | undefined,
+      clothingType: req.query.clothingType as ClothingType | undefined,
       phone: req.query.phone as string | undefined,
       barcode: req.query.barcode as string | undefined,
       startDate: req.query.startDate as string | undefined,

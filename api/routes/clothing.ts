@@ -9,10 +9,10 @@ router.get('/search', clothingController.searchClothing);
 router.get('/overdue', clothingController.getOverdueClothing);
 router.get('/type-configs', clothingController.getTypeConfigs);
 router.get('/barcode/:barcode', clothingController.getClothingByBarcode);
+router.put('/batch/status', clothingController.batchUpdateStatus);
+router.get('/customer/:phone', clothingController.getCustomerHistory);
 router.get('/:id', clothingController.getClothingById);
 router.put('/:id/status', clothingController.updateClothingStatus);
-router.put('/batch/status', clothingController.batchUpdateStatus);
 router.put('/:id/pickup', clothingController.pickupClothing);
-router.get('/customer/:phone', clothingController.getCustomerHistory);
 
 export default router;
