@@ -1,5 +1,5 @@
 import axios from 'axios';
-import { Clothing, ClothingStatus, CreateClothingRequest, MonthlyStats, Customer, CustomerDetail, ClothingSearchParams, PaymentMethod, BatchUpdateStatusRequest, UpdateClothingRequest, PickupRequest, DashboardStats } from '../../shared/types';
+import { Clothing, ClothingStatus, CreateClothingRequest, MonthlyStats, Customer, CustomerDetail, ClothingSearchParams, PaymentMethod, BatchUpdateStatusRequest, UpdateClothingRequest, PickupRequest, DashboardStats, ExceptionRequest, RefundRequest, DailyReconciliation } from '../../shared/types';
 
 const api = axios.create({
   baseURL: '/api',
@@ -43,6 +43,17 @@ export const clothingApi = {
 
   getDashboardStats: () =>
     api.get<DashboardStats>('/clothing/dashboard').then(res => res.data),
+
+  getDailyReconciliation: (date?: string) =>
+    api.get<DailyReconciliation>('/clothing/reconciliation/daily', {
+      params: { date },
+    }).then(res => res.data),
+
+  markException: (id: number, data: ExceptionRequest) =>
+    api.put<Clothing>(`/clothing/${id}/exception`, data).then(res => res.data),
+
+  refund: (id: number, data: RefundRequest) =>
+    api.put<Clothing>(`/clothing/${id}/refund`, data).then(res => res.data),
 
   getOverdue: () =>
     api.get<Clothing[]>('/clothing/overdue').then(res => res.data),

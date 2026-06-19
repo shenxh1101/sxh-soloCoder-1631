@@ -32,7 +32,10 @@ CREATE TABLE IF NOT EXISTS clothing (
     remark TEXT,
     payment_method VARCHAR(20) DEFAULT 'none',
     payment_details TEXT,
+    exception_type VARCHAR(20) DEFAULT 'none',
+    exception_remark TEXT,
     status_history TEXT NOT NULL,
+    operation_history TEXT NOT NULL DEFAULT '[]',
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
@@ -90,6 +93,33 @@ try {
     ALTER TABLE clothing ADD COLUMN payment_details TEXT;
   `;
   db.exec(upgradeSQL2);
+} catch (e) {
+  // 列可能已存在，忽略错误
+}
+
+try {
+  const upgradeSQL3 = `
+    ALTER TABLE clothing ADD COLUMN exception_type VARCHAR(20) DEFAULT 'none';
+  `;
+  db.exec(upgradeSQL3);
+} catch (e) {
+  // 列可能已存在，忽略错误
+}
+
+try {
+  const upgradeSQL4 = `
+    ALTER TABLE clothing ADD COLUMN exception_remark TEXT;
+  `;
+  db.exec(upgradeSQL4);
+} catch (e) {
+  // 列可能已存在，忽略错误
+}
+
+try {
+  const upgradeSQL5 = `
+    ALTER TABLE clothing ADD COLUMN operation_history TEXT NOT NULL DEFAULT '[]';
+  `;
+  db.exec(upgradeSQL5);
 } catch (e) {
   // 列可能已存在，忽略错误
 }

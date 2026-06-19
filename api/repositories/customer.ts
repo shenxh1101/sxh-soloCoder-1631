@@ -35,23 +35,47 @@ export function getCustomerDetailByPhone(phone: string): CustomerDetail | null {
   `);
   const historyRows = historyStmt.all(phone);
 
-  const history = historyRows.map((row: any) => ({
-    id: row.id,
-    barcode: row.barcode,
-    clothingType: row.clothing_type as ClothingType,
-    customerPhone: row.customer_phone,
-    customerName: row.customer_name || undefined,
-    price: row.price,
-    receiveDate: row.receive_date,
-    expectedPickupDate: row.expected_pickup_date,
-    actualPickupDate: row.actual_pickup_date || undefined,
-    status: row.status,
-    remark: row.remark || undefined,
-    paymentMethod: row.payment_method || 'none',
-    statusHistory: JSON.parse(row.status_history),
-    createdAt: row.created_at,
-    updatedAt: row.updated_at,
-  }));
+  const history = historyRows.map((row: any) => {
+    let paymentDetails;
+    if (row.payment_details) {
+      try {
+        paymentDetails = JSON.parse(row.payment_details);
+      } catch (e) {
+        paymentDetails = undefined;
+      }
+    }
+
+    let operationHistory = [];
+    if (row.operation_history) {
+      try {
+        operationHistory = JSON.parse(row.operation_history);
+      } catch (e) {
+        operationHistory = [];
+      }
+    }
+
+    return {
+      id: row.id,
+      barcode: row.barcode,
+      clothingType: row.clothing_type as ClothingType,
+      customerPhone: row.customer_phone,
+      customerName: row.customer_name || undefined,
+      price: row.price,
+      receiveDate: row.receive_date,
+      expectedPickupDate: row.expected_pickup_date,
+      actualPickupDate: row.actual_pickup_date || undefined,
+      status: row.status,
+      remark: row.remark || undefined,
+      paymentMethod: row.payment_method || 'none',
+      paymentDetails,
+      exceptionType: row.exception_type || 'none',
+      exceptionRemark: row.exception_remark || undefined,
+      statusHistory: JSON.parse(row.status_history),
+      operationHistory,
+      createdAt: row.created_at,
+      updatedAt: row.updated_at,
+    };
+  });
 
   return {
     ...customer,

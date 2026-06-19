@@ -1,5 +1,5 @@
 import db from '../db/init';
-import { Clothing, ClothingStatus, ClothingType, CreateClothingRequest, StatusRecord, ClothingSearchParams, PaymentMethod, PaymentDetail, UpdateClothingRequest, DashboardStats } from '../../shared/types';
+import { Clothing, ClothingStatus, ClothingType, CreateClothingRequest, StatusRecord, ClothingSearchParams, PaymentMethod, PaymentDetail, UpdateClothingRequest, DashboardStats, ExceptionType, ExceptionRequest, RefundRequest, OperationRecord, OperationType, DailyReconciliation, PAYMENT_METHOD_LABELS } from '../../shared/types';
 import { generateBarcode, formatDate } from '../utils/barcode';
 import { updateCustomerStats } from './customer';
 
@@ -10,6 +10,15 @@ function rowToClothing(row: any): Clothing {
       paymentDetails = JSON.parse(row.payment_details);
     } catch (e) {
       paymentDetails = undefined;
+    }
+  }
+
+  let operationHistory: OperationRecord[] = [];
+  if (row.operation_history) {
+    try {
+      operationHistory = JSON.parse(row.operation_history);
+    } catch (e) {
+      operationHistory = [];
     }
   }
 
@@ -27,10 +36,27 @@ function rowToClothing(row: any): Clothing {
     remark: row.remark || undefined,
     paymentMethod: (row.payment_method as PaymentMethod) || 'none',
     paymentDetails,
+    exceptionType: (row.exception_type as ExceptionType) || 'none',
+    exceptionRemark: row.exception_remark || undefined,
     statusHistory: JSON.parse(row.status_history),
+    operationHistory,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
+}
+
+function addOperationRecord(clothing: Clothing, type: OperationType, opts: {
+  before?: string | number;
+  after?: string | number;
+  remark?: string;
+  operator?: string;
+}): OperationRecord[] {
+  const record: OperationRecord = {
+    type,
+    timestamp: new Date().toISOString(),
+    ...opts,
+  };
+  return [...clothing.operationHistory, record];
 }
 
 export function createClothing(data: CreateClothingRequest): Clothing {
@@ -40,11 +66,16 @@ export function createClothing(data: CreateClothingRequest): Clothing {
     timestamp: new Date().toISOString(),
   }];
 
+  const initialOperations: OperationRecord[] = [{
+    type: 'create',
+    timestamp: new Date().toISOString(),
+  }];
+
   const insertStmt = db.prepare(`
     INSERT INTO clothing (
       barcode, clothing_type, customer_phone, customer_name, price,
-      receive_date, expected_pickup_date, status, remark, status_history, payment_method
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      receive_date, expected_pickup_date, status, remark, status_history, payment_method, operation_history
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
 
   let lastError: any = null;
@@ -62,7 +93,8 @@ export function createClothing(data: CreateClothingRequest): Clothing {
         'received',
         data.remark || null,
         JSON.stringify(initialHistory),
-        'none'
+        'none',
+        JSON.stringify(initialOperations)
       );
 
       const clothing = getClothingById(result.lastInsertRowid as number)!;
@@ -92,22 +124,40 @@ export function updateClothing(id: number, data: UpdateClothingRequest): Clothin
 
   const fields: string[] = [];
   const values: any[] = [];
+  let operationHistory = existing.operationHistory;
 
-  if (data.expectedPickupDate !== undefined) {
+  if (data.expectedPickupDate !== undefined && data.expectedPickupDate !== existing.expectedPickupDate) {
     fields.push('expected_pickup_date = ?');
     values.push(data.expectedPickupDate);
+    operationHistory = addOperationRecord(existing, 'date_change', {
+      before: existing.expectedPickupDate,
+      after: data.expectedPickupDate,
+      operator: data.operator,
+    });
   }
-  if (data.remark !== undefined) {
+  if (data.remark !== undefined && data.remark !== existing.remark) {
     fields.push('remark = ?');
     values.push(data.remark || null);
+    operationHistory = addOperationRecord({ ...existing, operationHistory }, 'remark_change', {
+      before: existing.remark || '',
+      after: data.remark || '',
+      operator: data.operator,
+    });
   }
-  if (data.price !== undefined) {
+  if (data.price !== undefined && data.price !== existing.price) {
     fields.push('price = ?');
     values.push(data.price);
+    operationHistory = addOperationRecord({ ...existing, operationHistory }, 'price_change', {
+      before: existing.price,
+      after: data.price,
+      operator: data.operator,
+    });
   }
 
   if (fields.length === 0) return existing;
 
+  fields.push('operation_history = ?');
+  values.push(JSON.stringify(operationHistory));
   fields.push('updated_at = CURRENT_TIMESTAMP');
   values.push(id);
 
@@ -293,6 +343,10 @@ export function pickupClothing(id: number, paymentMethod: PaymentMethod = 'cash'
     },
   ];
 
+  const operationHistory = addOperationRecord(clothing, 'pickup', {
+    remark: `支付方式：${paymentMethod}，金额：¥${clothing.price.toFixed(2)}`,
+  });
+
   const stmt = db.prepare(`
     UPDATE clothing 
     SET status = 'completed', 
@@ -300,6 +354,7 @@ export function pickupClothing(id: number, paymentMethod: PaymentMethod = 'cash'
         actual_pickup_date = ?,
         payment_method = ?,
         payment_details = ?,
+        operation_history = ?,
         updated_at = CURRENT_TIMESTAMP
     WHERE id = ?
   `);
@@ -309,6 +364,7 @@ export function pickupClothing(id: number, paymentMethod: PaymentMethod = 'cash'
     formatDate(new Date()),
     paymentMethod,
     paymentDetails ? JSON.stringify(paymentDetails) : null,
+    JSON.stringify(operationHistory),
     id
   );
 
@@ -362,11 +418,153 @@ export function getDashboardStats(): DashboardStats {
   `);
   const { count: waitingPickup } = waitingPickupStmt.get() as { count: number };
 
+  const exceptionStmt = db.prepare(`
+    SELECT COUNT(*) as count FROM clothing WHERE exception_type != 'none' AND exception_type IS NOT NULL
+  `);
+  const { count: exceptionCount } = exceptionStmt.get() as { count: number };
+
   return {
     todayReceived,
     overdueCount,
     pendingInspection,
     waitingPickup,
+    exceptionCount,
+  };
+}
+
+export function markException(id: number, exceptionType: ExceptionType, exceptionRemark?: string, operator?: string): Clothing | null {
+  const clothing = getClothingById(id);
+  if (!clothing) return null;
+
+  const operationHistory = addOperationRecord(clothing,
+    exceptionType === 'none' ? 'exception_clear' : 'exception_mark',
+    {
+      before: clothing.exceptionType || 'none',
+      after: exceptionType,
+      remark: exceptionRemark,
+      operator,
+    }
+  );
+
+  const stmt = db.prepare(`
+    UPDATE clothing 
+    SET exception_type = ?, 
+        exception_remark = ?,
+        operation_history = ?,
+        updated_at = CURRENT_TIMESTAMP
+    WHERE id = ?
+  `);
+
+  stmt.run(
+    exceptionType,
+    exceptionRemark || null,
+    JSON.stringify(operationHistory),
+    id
+  );
+
+  return getClothingById(id);
+}
+
+export function refundClothing(id: number, refundAmount?: number, remark?: string, operator?: string): Clothing | null {
+  const clothing = getClothingById(id);
+  if (!clothing) return null;
+
+  const amount = refundAmount ?? clothing.price;
+
+  const operationHistory = addOperationRecord(clothing, 'refund', {
+    before: clothing.price,
+    after: amount,
+    remark,
+    operator,
+  });
+
+  const stmt = db.prepare(`
+    UPDATE clothing 
+    SET exception_type = 'refunded', 
+        exception_remark = ?,
+        operation_history = ?,
+        updated_at = CURRENT_TIMESTAMP
+    WHERE id = ?
+  `);
+
+  stmt.run(
+    remark || `退款 ¥${amount.toFixed(2)}`,
+    JSON.stringify(operationHistory),
+    id
+  );
+
+  return getClothingById(id);
+}
+
+export function getDailyReconciliation(dateStr?: string): DailyReconciliation {
+  const targetDate = dateStr || formatDate(new Date());
+
+  const detailsStmt = db.prepare(`
+    SELECT * FROM clothing
+    WHERE actual_pickup_date = ?
+    AND status = 'completed'
+    AND payment_method != 'none'
+    ORDER BY updated_at ASC
+  `);
+  const detailRows = detailsStmt.all(targetDate);
+  const details = detailRows.map(rowToClothing);
+
+  const refundStmt = db.prepare(`
+    SELECT * FROM clothing
+    WHERE exception_type = 'refunded'
+    AND DATE(updated_at) = ?
+  `);
+  const refundRows = refundStmt.all(targetDate);
+  const refundItems = refundRows.map(rowToClothing);
+
+  const refundCount = refundItems.length;
+  const refundAmount = refundItems.reduce((sum, item) => sum + item.price, 0);
+
+  const paymentMap = new Map<PaymentMethod, { count: number; amount: number }>();
+  
+  for (const item of details) {
+    if (item.exceptionType === 'refunded') continue;
+    
+    if (item.paymentMethod === 'mixed' && item.paymentDetails && item.paymentDetails.length > 0) {
+      for (const detail of item.paymentDetails) {
+        const existing = paymentMap.get(detail.method) || { count: 0, amount: 0 };
+        paymentMap.set(detail.method, {
+          count: existing.count + 1,
+          amount: existing.amount + detail.amount,
+        });
+      }
+    } else if (item.paymentMethod && item.paymentMethod !== 'none' && item.paymentMethod !== 'mixed') {
+      const existing = paymentMap.get(item.paymentMethod) || { count: 0, amount: 0 };
+      paymentMap.set(item.paymentMethod, {
+        count: existing.count + 1,
+        amount: existing.amount + item.price,
+      });
+    }
+  }
+
+  const paymentStats = Array.from(paymentMap.entries())
+    .sort((a, b) => b[1].amount - a[1].amount)
+    .map(([method, data]) => ({
+      method,
+      methodName: PAYMENT_METHOD_LABELS[method],
+      count: data.count,
+      amount: data.amount,
+    }));
+
+  const totalCount = details.filter(d => d.exceptionType !== 'refunded').length;
+  const totalRevenue = details
+    .filter(d => d.exceptionType !== 'refunded')
+    .reduce((sum, d) => sum + d.price, 0);
+
+  return {
+    date: targetDate,
+    totalCount,
+    totalRevenue,
+    refundCount,
+    refundAmount,
+    netRevenue: totalRevenue - refundAmount,
+    paymentStats,
+    details,
   };
 }
 

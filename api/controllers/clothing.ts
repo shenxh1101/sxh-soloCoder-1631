@@ -1,7 +1,7 @@
 import { Request, Response } from 'express';
 import * as clothingRepo from '../repositories/clothing';
 import * as customerRepo from '../repositories/customer';
-import { CreateClothingRequest, ClothingStatus, BatchUpdateStatusRequest, ClothingSearchParams, PaymentMethod, ClothingType, UpdateClothingRequest, PickupRequest } from '../../shared/types';
+import { CreateClothingRequest, ClothingStatus, BatchUpdateStatusRequest, ClothingSearchParams, PaymentMethod, ClothingType, UpdateClothingRequest, PickupRequest, ExceptionRequest, RefundRequest, ExceptionType } from '../../shared/types';
 
 export async function createClothing(req: Request, res: Response) {
   try {
@@ -155,8 +155,34 @@ export async function pickupClothing(req: Request, res: Response) {
       return res.status(400).json({ error: '请选择支付方式' });
     }
 
-    if (paymentMethod === 'mixed' && (!paymentDetails || paymentDetails.length === 0)) {
-      return res.status(400).json({ error: '混合支付请填写明细' });
+    if (paymentMethod === 'mixed') {
+      if (!paymentDetails || paymentDetails.length === 0) {
+        return res.status(400).json({ error: '混合支付请填写支付明细' });
+      }
+
+      if (paymentDetails.length < 2) {
+        return res.status(400).json({ error: '混合支付至少需要两种支付方式' });
+      }
+
+      const methods = paymentDetails.map(d => d.method);
+      if (new Set(methods).size !== methods.length) {
+        return res.status(400).json({ error: '同一种支付方式不能重复' });
+      }
+
+      const hasInvalid = paymentDetails.some(d => !d.amount || d.amount <= 0);
+      if (hasInvalid) {
+        return res.status(400).json({ error: '每种支付方式的金额都必须大于0' });
+      }
+
+      const clothing = await clothingRepo.getClothingById(parseInt(id));
+      if (!clothing) {
+        return res.status(404).json({ error: '未找到该衣物记录' });
+      }
+
+      const total = paymentDetails.reduce((sum, d) => sum + d.amount, 0);
+      if (Math.abs(total - clothing.price) > 0.01) {
+        return res.status(400).json({ error: '支付明细总额与应付金额不一致' });
+      }
     }
 
     const clothing = clothingRepo.pickupClothing(parseInt(id), paymentMethod as PaymentMethod, paymentDetails);
@@ -176,6 +202,67 @@ export async function getDashboardStats(req: Request, res: Response) {
     res.json(stats);
   } catch (error) {
     console.error('获取看板统计失败:', error);
+    res.status(500).json({ error: '获取失败' });
+  }
+}
+
+export async function markException(req: Request, res: Response) {
+  try {
+    const { id } = req.params;
+    const { exceptionType, exceptionRemark, operator }: ExceptionRequest = req.body;
+
+    if (!exceptionType) {
+      return res.status(400).json({ error: '缺少异常类型' });
+    }
+
+    const clothing = clothingRepo.markException(
+      parseInt(id),
+      exceptionType as ExceptionType,
+      exceptionRemark,
+      operator
+    );
+    if (!clothing) {
+      return res.status(404).json({ error: '未找到该衣物记录' });
+    }
+    res.json(clothing);
+  } catch (error) {
+    console.error('标记异常失败:', error);
+    res.status(500).json({ error: '操作失败' });
+  }
+}
+
+export async function refundClothing(req: Request, res: Response) {
+  try {
+    const { id } = req.params;
+    const { refundAmount, remark, operator }: RefundRequest = req.body;
+
+    if (refundAmount !== undefined && refundAmount < 0) {
+      return res.status(400).json({ error: '退款金额不能为负数' });
+    }
+
+    const clothing = clothingRepo.refundClothing(
+      parseInt(id),
+      refundAmount,
+      remark,
+      operator
+    );
+    if (!clothing) {
+      return res.status(404).json({ error: '未找到该衣物记录' });
+    }
+    res.json(clothing);
+  } catch (error) {
+    console.error('退款失败:', error);
+    res.status(500).json({ error: '操作失败' });
+  }
+}
+
+export async function getDailyReconciliation(req: Request, res: Response) {
+  try {
+    const { date } = req.query;
+    const result = clothingRepo.getDailyReconciliation(date as string | undefined);
+    res.json(result);
+  } catch (error) {
+    console.error('获取日结对账失败:', error);
     res.status(500).json({ error: '获取失败' });
   }
 }

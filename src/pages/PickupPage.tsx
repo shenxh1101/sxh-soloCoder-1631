@@ -56,11 +56,25 @@ export default function PickupPage() {
 
     let pickupData: PickupRequest;
     if (paymentMethod === 'mixed') {
-      const total = paymentDetails.reduce((sum, d) => sum + d.amount, 0);
-      if (Math.abs(total - clothing.price) > 0.01) {
-        alert(`支付明细总额（¥${total.toFixed(2)}）与应付金额（¥${clothing.price.toFixed(2)}）不一致`);
+      const hasZero = paymentDetails.some(d => d.amount <= 0);
+      if (hasZero) {
+        alert('每种支付方式的金额都必须大于0');
         return;
       }
+
+      const total = paymentDetails.reduce((sum, d) => sum + d.amount, 0);
+      if (Math.abs(total - clothing.price) > 0.01) {
+        alert(`支付明细总额（¥${total.toFixed(2)}）与应付金额（¥${clothing.price.toFixed(2)}）不一致，请检查`);
+        return;
+      }
+
+      const methods = paymentDetails.map(d => d.method);
+      const hasDuplicate = new Set(methods).size !== methods.length;
+      if (hasDuplicate) {
+        alert('同一种支付方式只能出现一次');
+        return;
+      }
+
       pickupData = { paymentMethod, paymentDetails };
     } else {
       pickupData = { paymentMethod };
@@ -105,7 +119,13 @@ export default function PickupPage() {
 
   const handlePaymentDetailChange = (index: number, field: 'method' | 'amount', value: any) => {
     const updated = [...paymentDetails];
-    updated[index] = { ...updated[index], [field]: value };
+    if (field === 'amount') {
+      const num = parseFloat(value);
+      if (isNaN(num) || num < 0) return;
+      updated[index] = { ...updated[index], amount: Math.round(num * 100) / 100 };
+    } else {
+      updated[index] = { ...updated[index], [field]: value };
+    }
     setPaymentDetails(updated);
   };
 

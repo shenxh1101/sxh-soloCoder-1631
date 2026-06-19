@@ -6,6 +6,7 @@ const router = Router();
 router.post('/', clothingController.createClothing);
 router.get('/search', clothingController.searchClothing);
 router.get('/dashboard', clothingController.getDashboardStats);
+router.get('/reconciliation/daily', clothingController.getDailyReconciliation);
 router.get('/overdue', clothingController.getOverdueClothing);
 router.get('/type-configs', clothingController.getTypeConfigs);
 router.put('/batch/status', clothingController.batchUpdateStatus);
@@ -16,5 +17,7 @@ router.get('/:id', clothingController.getClothingById);
 router.put('/:id', clothingController.updateClothing);
 router.put('/:id/status', clothingController.updateClothingStatus);
 router.put('/:id/pickup', clothingController.pickupClothing);
+router.put('/:id/exception', clothingController.markException);
+router.put('/:id/refund', clothingController.refundClothing);
 
 export default router;

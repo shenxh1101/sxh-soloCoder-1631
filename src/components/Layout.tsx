@@ -1,5 +1,5 @@
 import { NavLink } from 'react-router-dom';
-import { Shirt, ClipboardList, Search, BarChart3, Shirt as ShirtIcon, Users } from 'lucide-react';
+import { Shirt, ClipboardList, Search, BarChart3, Shirt as ShirtIcon, Users, Calculator } from 'lucide-react';
 import { ReactNode } from 'react';
 import { useStore } from '../store/useStore';
 
@@ -14,6 +14,7 @@ export default function Layout({ children }: LayoutProps) {
     { path: '/status', label: '状态管理', icon: ClipboardList },
     { path: '/pickup', label: '取衣查询', icon: Search },
     { path: '/customer', label: '客户档案', icon: Users },
+    { path: '/reconciliation', label: '日结对账', icon: Calculator },
     { path: '/statistics', label: '统计分析', icon: BarChart3 },
   ];
 

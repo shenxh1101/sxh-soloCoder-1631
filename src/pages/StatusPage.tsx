@@ -13,7 +13,7 @@ export default function StatusPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const navigate = useNavigate();
   const { clothingList, setClothingList, overdueList, setOverdueList, loading, setLoading } = useStore();
-  const [activeTab, setActiveTab] = useState<ClothingStatus | 'all'>('all');
+  const [activeTab, setActiveTab] = useState<ClothingStatus | 'all' | 'overdue'>('all');
   const [updatingIds, setUpdatingIds] = useState<Set<number>>(new Set());
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
   const [showFilters, setShowFilters] = useState(false);
@@ -160,33 +160,33 @@ export default function StatusPage() {
   const handleDashboardClick = (type: 'todayReceived' | 'overdue' | 'pendingInspection' | 'waitingPickup') => {
     setSearchKeyword('');
     setFilterType('');
-    setStartDate('');
-    setEndDate('');
     
     switch (type) {
       case 'todayReceived':
         const today = new Date().toISOString().split('T')[0];
         setStartDate(today);
         setEndDate(today);
-        setActiveTab('received');
+        setActiveTab('all');
         break;
       case 'overdue':
-        setActiveTab('all');
-        setTimeout(() => {
-          const overdueSection = document.getElementById('overdue-section');
-          overdueSection?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-        }, 100);
+        setStartDate('');
+        setEndDate('');
+        setActiveTab('overdue' as any);
         break;
       case 'pendingInspection':
+        setStartDate('');
+        setEndDate('');
         setActiveTab('inspecting');
         break;
       case 'waitingPickup':
+        setStartDate('');
+        setEndDate('');
         setActiveTab('waiting');
         break;
     }
   };
 
-  const statusTabs: (ClothingStatus | 'all')[] = ['all', 'received', 'washing', 'ironing', 'inspecting', 'waiting'];
+  const statusTabs: (ClothingStatus | 'all' | 'overdue')[] = ['all', 'received', 'washing', 'ironing', 'inspecting', 'waiting', 'overdue'];
 
   const getNextStatusLabel = (status: ClothingStatus) => {
     const next = STATUS_FLOW[status];
@@ -194,8 +194,11 @@ export default function StatusPage() {
   };
 
   const filteredList = useMemo(() => {
+    if (activeTab === 'overdue') {
+      return overdueList;
+    }
     return clothingList;
-  }, [clothingList]);
+  }, [clothingList, overdueList, activeTab]);
 
   const canBatchUpdate = useMemo(() => {
     if (selectedIds.size === 0) return false;
@@ -410,21 +413,25 @@ export default function StatusPage() {
 
         <div className="flex border-b border-gray-100 overflow-x-auto">
           {statusTabs.map((tab) => (
-            <button
-              key={tab}
-              onClick={() => setActiveTab(tab)}
-              className={`px-6 py-4 font-medium whitespace-nowrap transition-all duration-200 ${
-                activeTab === tab
-                  ? 'text-primary-500 border-b-2 border-primary-500 bg-primary-500/5'
-                  : 'text-gray-400 hover:text-gray-600 hover:bg-gray-50'
-              }`}
-            >
-              {tab === 'all' ? '全部' : CLOTHING_STATUS_LABELS[tab]}
-              <span className="ml-2 text-xs px-2 py-0.5 rounded-full bg-gray-100">
-                {tab === 'all' ? clothingList.length : clothingList.filter(c => c.status === tab).length}
-              </span>
-            </button>
-          ))}
+              <button
+                key={tab}
+                onClick={() => setActiveTab(tab)}
+                className={`px-6 py-4 font-medium whitespace-nowrap transition-all duration-200 ${
+                  activeTab === tab
+                    ? 'text-primary-500 border-b-2 border-primary-500 bg-primary-500/5'
+                    : 'text-gray-400 hover:text-gray-600 hover:bg-gray-50'
+                }`}
+              >
+                {tab === 'all' ? '全部' :
+                  tab === 'overdue' ? '逾期未取' :
+                  CLOTHING_STATUS_LABELS[tab as ClothingStatus]}
+                <span className="ml-2 text-xs px-2 py-0.5 rounded-full bg-gray-100">
+                  {tab === 'all' ? clothingList.length :
+                   tab === 'overdue' ? overdueList.length :
+                   clothingList.filter(c => c.status === tab).length}
+                </span>
+              </button>
+            ))}
         </div>
 
         {selectedIds.size > 0 && (

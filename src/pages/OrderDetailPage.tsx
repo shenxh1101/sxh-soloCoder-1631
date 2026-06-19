@@ -1,9 +1,10 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { clothingApi } from '@/utils/api';
-import { Clothing, CLOTHING_STATUS_LABELS, STATUS_COLORS, CLOTHING_TYPE_LABELS, PAYMENT_METHOD_LABELS, PAYMENT_METHOD_COLORS, UpdateClothingRequest } from '../../shared/types';
+import { Clothing, CLOTHING_STATUS_LABELS, STATUS_COLORS, CLOTHING_TYPE_LABELS, PAYMENT_METHOD_LABELS, PAYMENT_METHOD_COLORS, UpdateClothingRequest, ExceptionType, EXCEPTION_TYPE_LABELS, EXCEPTION_TYPE_COLORS, OPERATION_TYPE_LABELS, ExceptionRequest, RefundRequest } from '../../shared/types';
 import StatusBadge from '@/components/StatusBadge';
 import Receipt from '@/components/Receipt';
+import { AlertTriangle, Clock, DollarSign, Edit3, Trash2, X, Check } from 'lucide-react';
 
 export default function OrderDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -14,6 +15,12 @@ export default function OrderDetailPage() {
   const [editData, setEditData] = useState<UpdateClothingRequest>({});
   const [saving, setSaving] = useState(false);
   const [showPrint, setShowPrint] = useState(false);
+  const [showExceptionModal, setShowExceptionModal] = useState(false);
+  const [showRefundModal, setShowRefundModal] = useState(false);
+  const [exceptionType, setExceptionType] = useState<ExceptionType>('dispute');
+  const [exceptionRemark, setExceptionRemark] = useState('');
+  const [refundAmount, setRefundAmount] = useState(0);
+  const [refundRemark, setRefundRemark] = useState('');
 
   useEffect(() => {
     if (id) {
@@ -61,6 +68,58 @@ export default function OrderDetailPage() {
     }, 100);
   };
 
+  const handleMarkException = async () => {
+    if (!order) return;
+    try {
+      const data: ExceptionRequest = {
+        exceptionType,
+        exceptionRemark: exceptionRemark || undefined,
+      };
+      const updated = await clothingApi.markException(order.id, data);
+      setOrder(updated);
+      setShowExceptionModal(false);
+    } catch (e) {
+      console.error('标记异常失败', e);
+      alert('操作失败，请重试');
+    }
+  };
+
+  const handleClearException = async () => {
+    if (!order) return;
+    if (!confirm('确定取消异常标记吗？')) return;
+    try {
+      const updated = await clothingApi.markException(order.id, { exceptionType: 'none' });
+      setOrder(updated);
+    } catch (e) {
+      console.error('取消异常失败', e);
+      alert('操作失败，请重试');
+    }
+  };
+
+  const handleRefund = async () => {
+    if (!order) return;
+    if (!confirm(`确认退款 ¥${refundAmount.toFixed(2)} 吗？`)) return;
+    try {
+      const data: RefundRequest = {
+        refundAmount,
+        remark: refundRemark || undefined,
+      };
+      const updated = await clothingApi.refund(order.id, data);
+      setOrder(updated);
+      setShowRefundModal(false);
+    } catch (e) {
+      console.error('退款失败', e);
+      alert('操作失败，请重试');
+    }
+  };
+
+  const openRefundModal = () => {
+    if (order) {
+      setRefundAmount(order.price);
+      setShowRefundModal(true);
+    }
+  };
+
   const formatDateTime = (iso: string) => {
     const d = new Date(iso);
     return `${d.getFullYear()}-${(d.getMonth() + 1).toString().padStart(2, '0')}-${d.getDate().toString().padStart(2, '0')} ${d.getHours().toString().padStart(2, '0')}:${d.getMinutes().toString().padStart(2, '0')}`;
@@ -96,7 +155,7 @@ export default function OrderDetailPage() {
         </div>
       )}
 
-      <div className="flex items-center justify-between mb-6">
+      <div className="flex items-center justify-between mb-4">
         <div className="flex items-center gap-4">
           <button
             onClick={() => navigate(-1)}
@@ -131,6 +190,40 @@ export default function OrderDetailPage() {
           </button>
         </div>
       </div>
+
+      {order.exceptionType && order.exceptionType !== 'none' && (
+        <div
+          className="mb-6 p-4 rounded-xl flex items-center justify-between"
+          style={{
+            backgroundColor: `${EXCEPTION_TYPE_COLORS[order.exceptionType as Exclude<typeof order.exceptionType, 'none'>]}15`,
+            borderLeft: `4px solid ${EXCEPTION_TYPE_COLORS[order.exceptionType as Exclude<typeof order.exceptionType, 'none'>]}`,
+          }}
+        >
+          <div className="flex items-center gap-3">
+            <AlertTriangle
+              className="w-6 h-6"
+              style={{ color: EXCEPTION_TYPE_COLORS[order.exceptionType as Exclude<typeof order.exceptionType, 'none'>] }}
+            />
+            <div>
+              <p
+                className="font-semibold"
+                style={{ color: EXCEPTION_TYPE_COLORS[order.exceptionType as Exclude<typeof order.exceptionType, 'none'>] }}
+              >
+                {EXCEPTION_TYPE_LABELS[order.exceptionType as Exclude<typeof order.exceptionType, 'none'>]}
+              </p>
+              {order.exceptionRemark && (
+                <p className="text-sm text-gray-600 mt-1">{order.exceptionRemark}</p>
+              )}
+            </div>
+          </div>
+          <button
+            onClick={handleClearException}
+            className="text-sm text-gray-500 hover:text-gray-700 underline"
+          >
+            取消标记
+          </button>
+        </div>
+      )}
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="lg:col-span-2 space-y-6">
@@ -298,6 +391,80 @@ export default function OrderDetailPage() {
               )}
             </div>
           )}
+
+          <div className="bg-white rounded-xl shadow-sm p-6">
+            <h2 className="text-lg font-semibold mb-4 flex items-center gap-2">
+              <svg className="w-5 h-5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" />
+              </svg>
+              操作记录
+            </h2>
+            {order.operationHistory && order.operationHistory.length > 0 ? (
+              <div className="space-y-3">
+                {[...order.operationHistory].reverse().map((record, index) => (
+                  <div key={index} className="flex gap-3 py-2 border-b border-gray-50 last:border-0">
+                    <div className="w-8 h-8 bg-gray-100 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5">
+                      {record.type === 'create' && <Edit3 className="w-4 h-4 text-gray-500" />}
+                      {record.type === 'price_change' && <DollarSign className="w-4 h-4 text-green-500" />}
+                      {record.type === 'date_change' && <Clock className="w-4 h-4 text-blue-500" />}
+                      {record.type === 'remark_change' && <Edit3 className="w-4 h-4 text-purple-500" />}
+                      {(record.type === 'exception_mark' || record.type === 'exception_clear') && (
+                        <AlertTriangle className="w-4 h-4 text-yellow-500" />
+                      )}
+                      {record.type === 'pickup' && <Check className="w-4 h-4 text-green-500" />}
+                      {record.type === 'refund' && <Trash2 className="w-4 h-4 text-red-500" />}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center justify-between gap-2">
+                        <p className="font-medium text-gray-700">
+                          {OPERATION_TYPE_LABELS[record.type]}
+                        </p>
+                        <span className="text-xs text-gray-400 flex-shrink-0">
+                          {formatDateTime(record.timestamp)}
+                        </span>
+                      </div>
+                      {(record.before !== undefined || record.after !== undefined) && (
+                        <p className="text-sm text-gray-500 mt-1">
+                          {record.type === 'price_change' && (
+                            <>¥{record.before} → ¥{record.after}</>
+                          )}
+                          {record.type === 'date_change' && (
+                            <>{record.before} → {record.after}</>
+                          )}
+                          {record.type === 'remark_change' && record.after !== '' && (
+                            <>备注：{record.after || '(清空)'}</>
+                          )}
+                          {(record.type === 'exception_mark' || record.type === 'exception_clear') && (
+                            <>
+                              {record.before === 'none' ? '无' : 
+                                record.before === 'dispute' ? '客户争议' :
+                                record.before === 'damaged' ? '衣物损坏' :
+                                record.before === 'hold' ? '暂缓取衣' :
+                                record.before === 'refunded' ? '已退款' : record.before}
+                              {' → '}
+                              {record.after === 'none' ? '无' :
+                                record.after === 'dispute' ? '客户争议' :
+                                record.after === 'damaged' ? '衣物损坏' :
+                                record.after === 'hold' ? '暂缓取衣' :
+                                record.after === 'refunded' ? '已退款' : record.after}
+                            </>
+                          )}
+                          {record.type === 'refund' && (
+                            <>退款 ¥{record.after}</>
+                          )}
+                        </p>
+                      )}
+                      {record.remark && (
+                        <p className="text-sm text-gray-500 mt-1">{record.remark}</p>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="text-gray-400 text-center py-8">暂无操作记录</p>
+            )}
+          </div>
         </div>
 
         <div className="space-y-6">
@@ -341,10 +508,150 @@ export default function OrderDetailPage() {
                 </svg>
                 查看客户档案
               </button>
+              {(!order.exceptionType || order.exceptionType === 'none') && (
+                <button
+                  onClick={() => setShowExceptionModal(true)}
+                  className="w-full px-4 py-3 bg-yellow-50 text-yellow-600 rounded-lg hover:bg-yellow-100 transition-colors text-left flex items-center gap-3"
+                >
+                  <AlertTriangle className="w-5 h-5" />
+                  标记异常
+                </button>
+              )}
+              {order.exceptionType && order.exceptionType !== 'refunded' && order.status === 'completed' && (
+                <button
+                  onClick={openRefundModal}
+                  className="w-full px-4 py-3 bg-red-50 text-red-600 rounded-lg hover:bg-red-100 transition-colors text-left flex items-center gap-3"
+                >
+                  <DollarSign className="w-5 h-5" />
+                  申请退款
+                </button>
+              )}
             </div>
           </div>
         </div>
       </div>
+
+      {showExceptionModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-2xl p-6 w-full max-w-md mx-4">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-semibold">标记异常</h3>
+              <button
+                onClick={() => setShowExceptionModal(false)}
+                className="p-1 hover:bg-gray-100 rounded-lg transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="space-y-4">
+              <div>
+                <p className="text-sm font-medium text-gray-700 mb-2">异常类型</p>
+                <div className="grid grid-cols-2 gap-2">
+                  {(['dispute', 'damaged', 'hold'] as const).map((type) => (
+                    <button
+                      key={type}
+                      onClick={() => setExceptionType(type)}
+                      className={`p-3 rounded-lg border-2 transition-all text-left ${
+                        exceptionType === type
+                          ? 'border-blue-500 bg-blue-50'
+                          : 'border-gray-200 hover:border-gray-300'
+                      }`}
+                    >
+                      <p
+                        className="font-medium"
+                        style={{ color: EXCEPTION_TYPE_COLORS[type] }}
+                      >
+                        {EXCEPTION_TYPE_LABELS[type]}
+                      </p>
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div>
+                <p className="text-sm font-medium text-gray-700 mb-2">异常说明</p>
+                <textarea
+                  value={exceptionRemark}
+                  onChange={(e) => setExceptionRemark(e.target.value)}
+                  placeholder="请输入异常说明..."
+                  rows={3}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                />
+              </div>
+            </div>
+            <div className="flex gap-3 mt-6">
+              <button
+                onClick={() => setShowExceptionModal(false)}
+                className="flex-1 px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors"
+              >
+                取消
+              </button>
+              <button
+                onClick={handleMarkException}
+                className="flex-1 px-4 py-2 bg-yellow-500 text-white rounded-lg hover:bg-yellow-600 transition-colors"
+              >
+                确认标记
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showRefundModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-2xl p-6 w-full max-w-md mx-4">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-semibold">申请退款</h3>
+              <button
+                onClick={() => setShowRefundModal(false)}
+                className="p-1 hover:bg-gray-100 rounded-lg transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="space-y-4">
+              <div>
+                <p className="text-sm font-medium text-gray-700 mb-2">退款金额</p>
+                <div className="relative">
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 text-lg">¥</span>
+                  <input
+                    type="number"
+                    value={refundAmount}
+                    onChange={(e) => setRefundAmount(parseFloat(e.target.value) || 0)}
+                    step="0.01"
+                    min="0"
+                    className="w-full pl-8 pr-3 py-3 text-xl font-bold border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-red-500"
+                  />
+                </div>
+                <p className="text-xs text-gray-400 mt-1">原金额：¥{order?.price.toFixed(2)}</p>
+              </div>
+              <div>
+                <p className="text-sm font-medium text-gray-700 mb-2">退款原因</p>
+                <textarea
+                  value={refundRemark}
+                  onChange={(e) => setRefundRemark(e.target.value)}
+                  placeholder="请输入退款原因..."
+                  rows={3}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-red-500"
+                />
+              </div>
+            </div>
+            <div className="flex gap-3 mt-6">
+              <button
+                onClick={() => setShowRefundModal(false)}
+                className="flex-1 px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors"
+              >
+                取消
+              </button>
+              <button
+                onClick={handleRefund}
+                className="flex-1 px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 transition-colors"
+              >
+                确认退款
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
